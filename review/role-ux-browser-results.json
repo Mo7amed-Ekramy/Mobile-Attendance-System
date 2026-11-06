@@ -1,0 +1,107 @@
+{
+  "database": "Temporary shared rehearsal database; removed afterward",
+  "workflow_layer": "HTTP API; three independent Chrome login/report/restoration views",
+  "scenarios": [
+    {
+      "scenario": "Shared API attendance, quiz, publication and duplicate protection",
+      "status": "PASS"
+    },
+    {
+      "scenario": "doctor independent Chrome login and CS381/SE1 scope",
+      "status": "PASS"
+    },
+    {
+      "scenario": "doctor task-focused dashboard and primary action",
+      "status": "PASS"
+    },
+    {
+      "scenario": "doctor five destinations and dashboard at 320px",
+      "status": "PASS"
+    },
+    {
+      "scenario": "ta independent Chrome login and CS381/SE1 scope",
+      "status": "PASS"
+    },
+    {
+      "scenario": "ta task-focused dashboard and primary action",
+      "status": "PASS"
+    },
+    {
+      "scenario": "ta five destinations and dashboard at 320px",
+      "status": "PASS"
+    },
+    {
+      "scenario": "Student inline login error permits a valid retry",
+      "status": "PASS"
+    },
+    {
+      "scenario": "student independent Chrome login and CS381/SE1 scope",
+      "status": "PASS"
+    },
+    {
+      "scenario": "student task-focused dashboard and primary action",
+      "status": "PASS"
+    },
+    {
+      "scenario": "student five destinations and dashboard at 320px",
+      "status": "PASS"
+    },
+    {
+      "scenario": "TA opens assigned section workspace directly",
+      "status": "PASS"
+    },
+    {
+      "scenario": "Student attendance history and scan entry share one destination",
+      "status": "PASS"
+    },
+    {
+      "scenario": "Student Chrome displays published results in shared scope",
+      "status": "PASS"
+    },
+    {
+      "scenario": "doctor Chrome renders selected-section report",
+      "status": "PASS"
+    },
+    {
+      "scenario": "ta Chrome renders selected-section report",
+      "status": "PASS"
+    },
+    {
+      "scenario": "Doctor grade save control is visible without scrolling the roster",
+      "status": "PASS"
+    },
+    {
+      "scenario": "doctor Chrome restores its session after API restart",
+      "status": "PASS"
+    },
+    {
+      "scenario": "doctor selected scope and dark theme persist through reload",
+      "status": "PASS"
+    },
+    {
+      "scenario": "ta Chrome restores its session after API restart",
+      "status": "PASS"
+    },
+    {
+      "scenario": "ta selected scope and dark theme persist through reload",
+      "status": "PASS"
+    },
+    {
+      "scenario": "student Chrome restores its session after API restart",
+      "status": "PASS"
+    },
+    {
+      "scenario": "student selected scope and dark theme persist through reload",
+      "status": "PASS"
+    },
+    {
+      "scenario": "Saved attendance, grades and notifications survive API restart",
+      "status": "PASS"
+    },
+    {
+      "scenario": "No uncaught browser application exceptions",
+      "status": "PASS"
+    }
+  ],
+  "success": true
+}

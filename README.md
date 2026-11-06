@@ -1,142 +1,130 @@
-﻿# 📱 نظام الحضور الذكي — جامعة أسيوط الأهلية
-### Mobile Attendance System — Assiut National University
+# نظام الحضور والتقييم — جامعة أسيوط الأهلية
 
-> تطبيق فلاتر متكامل لإدارة الحضور والتقييم الأكاديمي، يدعم أدوار متعددة (دكتور، معيد، طالب) مع بيانات حقيقية من قاعدة بيانات الجامعة.
+Flutter app for doctors, teaching assistants, and students, connected to local
+PostgreSQL through an authenticated Python API.
 
----
+~~~text
+Flutter → FastAPI (/api/v1) → PostgreSQL university_attendance
+~~~
 
-## 🗂️ هيكل المشروع
+.NET supplied the initial academic seed only; it is not needed at runtime.
+Runtime mocks and the static academic directory have been removed. The Arabic
+interface, RTL layout, university logo, and brown theme remain.
 
-```
-mobile/
-├── lib/
-│   ├── app.dart              # الشاشات وكل منطق الواجهة
-│   ├── theme.dart            # نظام الألوان والخطوط (Brand)
-│   ├── mock_data.dart        # DemoState + بيانات الجلسة
-│   └── college_database.dart # قاعدة بيانات الجامعة (415 طالب، 36 موظف)
-├── assets/
-│   └── images/
-│       └── logo.png          # شعار الجامعة
-├── android/                  # إعدادات Android
-├── web/                      # إعدادات Flutter Web
-└── pubspec.yaml
-```
+For a fresh checkout follow [standalone setup](docs/SETUP.md). For the defense
+use [the exact three-role runbook](docs/DEMO_RUNBOOK.md),
+[current feature status](docs/FEATURE_STATUS.md), and
+[Phase 5 verification](docs/PHASE5_VERIFICATION.md).
+Phase 4 is partial; the [audit](review/phase4-audit.md) records its missing features.
+The [UI/UX review](docs/UI_UX_REVIEW.md) covers the newer role dashboards,
+attendance hub, section shortcuts, edit protection and saved preferences.
 
----
+## Run on this PC
 
-## ⚡ متطلبات التشغيل
+Requirements: Flutter compatible with pubspec.lock, Python 3.13, PostgreSQL 18.
+The database and Python environment have already been prepared here. From the
+mobile directory, start the API in one PowerShell terminal:
 
-| أداة | الإصدار المطلوب |
-|------|----------------|
-| Flutter SDK | ≥ 3.22.0 |
-| Dart SDK | ≥ 3.4.0 |
-| Android Studio | Hedgehog أو أحدث |
-| Chrome | أي إصدار حديث |
+~~~powershell
+.\server\.venv\Scripts\python.exe server/run.py
+~~~
 
-تحقق من البيئة:
-```bash
-flutter doctor
-```
+Then start Flutter in another terminal:
 
----
-
-## 🚀 تشغيل المشروع
-
-### 1️⃣ تثبيت الاعتماديات
-
-```bash
+~~~powershell
 flutter pub get
-```
-
----
-
-### 2️⃣ تشغيل على الويب (Dev Mode)
-
-```bash
 flutter run -d chrome
-```
+~~~
 
-أو على بورت معين:
-```bash
-flutter run -d web-server --web-port=8080 --web-hostname=localhost
-```
+Default API: http://localhost:8000/api/v1.
+Database health: http://127.0.0.1:8000/api/v1/health.
+API documentation: http://127.0.0.1:8000/docs.
+Keep PostgreSQL and the API running while using Flutter.
 
-ثم افتح المتصفح على: `http://localhost:8080`
+## Database-backed development accounts
 
----
+Each imported account sees its actual academic assignments and authenticates
+using stored password hashes.
 
-### 3️⃣ تشغيل على الموبايل (Dev Mode)
+| Role | Username | Initial local password |
+|---|---|---|
+| Doctor | doc_rasha01 | Doctor@123 |
+| Teaching assistant | ta_nehad00 | TA@123 |
+| Student | ahmd_1478 (or university ID 20720236007) | 20720236007 |
 
-تأكد أن جهازك متصل أو المحاكي شغّال:
-```bash
-flutter devices
-```
+Setup initializes only missing hashes: staff passwords by role, each student's
+own university ID as their password. Existing hashes are preserved. These are
+local graduation-demo credentials. Account administration/password reset are
+additional work before broader deployment. Imported admins have no mobile role.
+In-app password change verifies the current password and revokes other sessions.
+It preserves the changing session. Use changed credentials if the initial ones
+have already been replaced; self-service recovery is not implemented.
 
-ثم شغّل:
-```bash
-flutter run
-```
+## Android emulator and physical device
 
-لتحديد جهاز معين:
-```bash
-flutter run -d <device-id>
-```
+Android emulator on this PC:
 
----
+~~~powershell
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000/api/v1
+~~~
 
-### 4️⃣ تشغيل عبر Android Studio
+Physical Android device on the same network:
 
-1. افتح **Android Studio**
-2. اختر **Open** → حدد مجلد `mobile/`
-3. من شريط الأدوات اختر الجهاز (محاكي أو جهاز حقيقي)
-4. اضغط **▶ Run** أو `Shift+F10`
+~~~powershell
+.\server\.venv\Scripts\python.exe server/run.py --host 0.0.0.0
+flutter run --dart-define=API_BASE_URL=http://<PC-LAN-IP>:8000/api/v1
+~~~
 
-> لتفعيل Hot Reload أثناء التشغيل اضغط **⚡ (Lightning bolt)** أو `Ctrl+\`
+Allow inbound port 8000 in the PC firewall if needed. Android debug builds allow
+local HTTP. Camera scanning needs permission. Release-device configuration needs
+an appropriate HTTPS API URL. Physical camera/network use has not been verified.
 
----
+## Implemented workflows
 
-## 🔑 حسابات تجريبية
+- Login, restored sessions, logout, and role/assignment permissions.
+- Courses, sections, searchable rosters, assignments, course creation, and reports.
+- Lecture QR attendance with rotation, expiry, duplicate protection, and closure
+  recording absences; TA section attendance with complete roster finalization.
+- Policy drafts/publication, section-aware assessments, saved grades, zero versus
+  missing, published snapshots, and audited corrections.
+- Question banks and section quizzes with random questions, autosaved answers,
+  server deadlines/scoring, and published results.
+- In-app notifications generated by actual workflow events.
 
-| الدور | معرف المستخدم | كلمة المرور |
-|-------|--------------|-------------|
-| 👨‍🏫 دكتور | `doc_rasha01` | `pass123` |
-| 🎓 معيد | `ta_nehad00` | `pass123` |
-| 👨‍🎓 طالب | `20720236007` | `pass123` |
+Operational screens initially appear empty: the academic seed has no attendance
+history, grades, questions, or quiz attempts. Create these through the app.
+No operational demo records are generated at startup.
 
----
+## Project layout
 
-## 🏗️ بناء ملف الإنتاج
+| Path | Purpose |
+|---|---|
+| lib/app.dart, lib/app_state.dart | Navigation and authenticated scope |
+| lib/data/ | HTTP client, secure token storage, typed models |
+| lib/features/ | Auth, courses, attendance, grading, quizzes, settings |
+| lib/widgets/, lib/theme.dart | Loading/errors/actions and presentation |
+| database/ | Schema, imported seed, migrations, verification |
+| server/ | PostgreSQL API and integration tests |
+| tool/verify_api.dart | Live role checks against the running API |
 
-**Web:**
-```bash
-flutter build web --release
-```
-الملفات ستكون في `build/web/`
+See [database details](database/README.md), [API setup](server/README.md),
+and [design tokens](DESIGN_SYSTEM.md). Database passwords remain in ignored .env
+files outside Flutter.
 
-**Android APK:**
-```bash
-flutter build apk --release
-```
-الملف في `build/app/outputs/flutter-apk/app-release.apk`
+## Validation and web build
 
-**Android App Bundle (للـ Play Store):**
-```bash
-flutter build appbundle --release
-```
+~~~powershell
+flutter analyze --no-pub
+flutter test --no-pub
+python -m unittest discover -s database -p 'test_*.py' -v
+.\server\.venv\Scripts\python.exe -m unittest discover -s server -p 'test_*.py' -v
+dart run tool/verify_api.dart
+flutter build web --release --no-pub
+~~~
 
----
+API tests create a uniquely named temporary database and drop only that database.
+Live verification reads real data and signs in/out, without adding academic or
+operational records. Flutter unit tests use isolated HTTP responses.
+Web output is build/web/.
 
-## 🗄️ قاعدة البيانات
-
-التطبيق يستخدم `college_database.dart` كـ static mirror لقاعدة بيانات الجامعة الأصلية (.NET / EF Core):
-
-- **415 طالب** مسجل بأسمائهم الحقيقية ورقم القيد
-- **36 مستخدم** (دكاترة ومعيدين) بأرقامهم الوظيفية
-- **14 مقرر دراسي** مع أقسامها وسكاشنها
-- **19 قسم (section)** منتشرة على الأقسام العلمية
-
----
-
-## 📄 الترخيص
-
-هذا المشروع تعليمي خاص بجامعة أسيوط الأهلية.
+This is an educational graduation project.

@@ -1,0 +1,2 @@
+# Browser testing only; run with the existing server virtual environment.
+playwright>=1.64,<2

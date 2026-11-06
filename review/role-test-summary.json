@@ -1,0 +1,225 @@
+{
+  "roles": {
+    "doctor": {
+      "scenarios": 103,
+      "statuses": {
+        "PASS": 98,
+        "FAIL": 5
+      },
+      "layers": {
+        "API": {
+          "PASS": 72,
+          "FAIL": 3
+        },
+        "Chrome UI": {
+          "PASS": 26,
+          "FAIL": 2
+        }
+      },
+      "failures": [
+        {
+          "scenario": "Reports: Shared closed lecture counted for selected section",
+          "layer": "API",
+          "status": "FAIL",
+          "detail": "AssertionError: Shared lecture shown in attendance but omitted from section report"
+        },
+        {
+          "scenario": "Grades: Every follow-up correction still requires a reason",
+          "layer": "API",
+          "status": "FAIL",
+          "detail": "AssertionError: PATCH /courses/1/assessments/3/results: expected HTTP 422, got 200"
+        },
+        {
+          "scenario": "Grades: Concurrent initial edits do not silently overwrite",
+          "layer": "API",
+          "status": "FAIL",
+          "detail": "AssertionError: Two initial revision-0 writes returned [200, 200], expected one success and one conflict"
+        },
+        {
+          "scenario": "UI Rosters: Typing a roster search preserves text and focus",
+          "layer": "Chrome UI",
+          "status": "FAIL",
+          "detail": "AssertionError: Roster search resets its text during loading"
+        },
+        {
+          "scenario": "UI Grades: Excused checkbox updates when entering a numeric grade",
+          "layer": "Chrome UI",
+          "status": "FAIL",
+          "detail": "AssertionError: Excused remains visually checked after entering a recorded score"
+        }
+      ],
+      "unverified": []
+    },
+    "student": {
+      "scenarios": 125,
+      "statuses": {
+        "PASS": 121,
+        "FAIL": 4
+      },
+      "layers": {
+        "API": {
+          "PASS": 77,
+          "FAIL": 2
+        },
+        "Chrome": {
+          "PASS": 44,
+          "FAIL": 1
+        },
+        "API/Flutter calculation": {
+          "FAIL": 1
+        }
+      },
+      "failures": [
+        {
+          "scenario": "attendance: guessed draft section detail is hidden",
+          "layer": "API",
+          "status": "FAIL",
+          "detail": "GET /courses/1/sessions/5: expected 403, got 200"
+        },
+        {
+          "scenario": "quizzes: abandoned expired attempt finalizes without reopening",
+          "layer": "API",
+          "status": "FAIL",
+          "detail": "Expired abandoned attempt remains in_progress"
+        },
+        {
+          "scenario": "scanner UI: failed submission keeps manual form expanded",
+          "layer": "Chrome",
+          "status": "FAIL",
+          "detail": "Manual entry panel collapses after failed check-in"
+        },
+        {
+          "scenario": "attendance history: percentage covers more than 100 sessions",
+          "layer": "API/Flutter calculation",
+          "status": "FAIL",
+          "detail": "API returns only 100 sessions; UI rate 100.0000%, complete history 99.0291% (103 eligible)"
+        }
+      ],
+      "unverified": []
+    },
+    "ta": {
+      "scenarios": 97,
+      "statuses": {
+        "PASS": 85,
+        "FAIL": 5,
+        "INCOMPLETE": 6,
+        "NOT TESTABLE": 1
+      },
+      "layers": {
+        "API": {
+          "PASS": 64,
+          "FAIL": 3
+        },
+        "Chrome UI": {
+          "PASS": 16,
+          "FAIL": 1,
+          "INCOMPLETE": 6
+        },
+        "Physical device": {
+          "NOT TESTABLE": 1
+        },
+        "Flutter component": {
+          "PASS": 5,
+          "FAIL": 1
+        }
+      },
+      "failures": [
+        {
+          "scenario": "Lecture details: no other-TA roster exposure",
+          "layer": "API",
+          "status": "FAIL",
+          "detail": "AssertionError: TA received shared lecture roster containing other TAs' students (known access gap)"
+        },
+        {
+          "scenario": "Gradebook: repeated correction still requires audit reason",
+          "layer": "API",
+          "status": "FAIL",
+          "detail": "AssertionError: PATCH /courses/1/assessments/1/results: expected 422, got 200"
+        },
+        {
+          "scenario": "Quizzes: abandoned expired attempt is resolved for TA grading",
+          "layer": "API",
+          "status": "FAIL",
+          "detail": "AssertionError: Expired abandoned attempt remains in_progress after staff reads (known gap)"
+        },
+        {
+          "scenario": "Browser roster: multi-character search preserves input",
+          "layer": "Chrome UI",
+          "status": "FAIL",
+          "detail": "AssertionError: Roster search field reset after request (confirmed prior issue)"
+        },
+        {
+          "scenario": "TA recorded numeric grade clears existing excuse checkbox",
+          "layer": "Flutter component",
+          "status": "FAIL",
+          "detail": "Expected checkbox false after typing 3; actual true. Retained failing acceptance test at test/roles/ta_role_test.dart:271."
+        }
+      ],
+      "unverified": [
+        {
+          "scenario": "Browser assessment: create section assignment",
+          "layer": "Chrome UI",
+          "status": "INCOMPLETE",
+          "detail": "Dropdown/menu navigation did not complete reliably in Chrome; component acceptance passed. Raw automation result: TimeoutError: Locator.click: Timeout 15000ms exceeded. Call log:   - waiting for get_by_role(\"button\", name=re.compile(r\"إنشاء\\ التقييم\")).first     - locator resolved to <flt-semantics tabindex=\"0\" role=\"button\" flt-tappable=\"\" id=\"flt-semantic-node-108\">إنشاء التقييم</flt-semantics>   - attempting click action     - waiting for element to be visible, enabled and stable   - element was detached from the DOM, retrying"
+        },
+        {
+          "scenario": "Browser gradebook: explicit zero saves",
+          "layer": "Chrome UI",
+          "status": "INCOMPLETE",
+          "detail": "Blocked by incomplete browser assessment creation; live API and component acceptance passed. Raw automation result: TimeoutError: Locator.click: Timeout 15000ms exceeded. Call log:   - waiting for get_by_role(\"button\", name=re.compile(r\"TA\\ Browser\\ Assessment\")).first"
+        },
+        {
+          "scenario": "Browser gradebook: typing score clears displayed excused status",
+          "layer": "Chrome UI",
+          "status": "INCOMPLETE",
+          "detail": "Blocked by incomplete browser assessment creation; the mismatch was independently reproduced by a failing component acceptance check. Raw automation result: IndexError: list index out of range"
+        },
+        {
+          "scenario": "Browser question bank: create four-option question",
+          "layer": "Chrome UI",
+          "status": "INCOMPLETE",
+          "detail": "New question was not reliably located after browser form submission/scroll; live API and component acceptance passed. Raw automation result: TimeoutError: Locator.wait_for: Timeout 15000ms exceeded. Call log:   - waiting for locator(\"flt-semantics\").get_by_text(\"TA browser question\").last to be visible"
+        },
+        {
+          "scenario": "Browser quiz creator: target section and random questions",
+          "layer": "Chrome UI",
+          "status": "INCOMPLETE",
+          "detail": "Dropdown/menu navigation did not complete reliably in Chrome; live API and component acceptance passed. Raw automation result: TimeoutError: Locator.click: Timeout 15000ms exceeded. Call log:   - waiting for get_by_role(\"button\", name=re.compile(r\"فتح\\ الكويز\\ وإشعار\\ الطلاب\")).first     - locator resolved to <flt-semantics tabindex=\"0\" role=\"button\" flt-tappable=\"\" id=\"flt-semantic-node-134\">فتح الكويز وإشعار الطلاب</flt-semantics>   - attempting click action     - waiting for element to be visible, enabled and stable   - element was detached from the DOM, retrying"
+        },
+        {
+          "scenario": "Browser settings: theme toggles",
+          "layer": "Chrome UI",
+          "status": "INCOMPLETE",
+          "detail": "Immediate browser checked-state assertion was timing-sensitive; theme passed earlier browser runs and a separate component acceptance check. Raw automation result: AssertionError: Theme switch did not toggle"
+        },
+        {
+          "scenario": "Native camera/QR scanner",
+          "layer": "Physical device",
+          "status": "NOT TESTABLE",
+          "detail": "TA cannot check in by QR; physical scanner belongs to student role/device testing."
+        }
+      ]
+    }
+  },
+  "total_scenarios": 325,
+  "statuses": {
+    "PASS": 304,
+    "FAIL": 14,
+    "INCOMPLETE": 6,
+    "NOT TESTABLE": 1
+  },
+  "focused_login_reruns": {
+    "student-login-ui-results.json": {
+      "scenarios": 5,
+      "statuses": {
+        "PASS": 5
+      }
+    },
+    "student-login-narrow-results.json": {
+      "scenarios": 5,
+      "statuses": {
+        "PASS": 5
+      }
+    }
+  }
+}

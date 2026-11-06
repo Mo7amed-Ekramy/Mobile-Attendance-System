@@ -1,0 +1,44 @@
+[
+  {
+    "name": "login UI: blank fields display validation",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "name": "login UI: password show/hide controls work",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "login UI: wrong password shows error and remains signed out",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "name": "login UI: university-ID login reaches student tabs",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "login UI: refresh restores secure session",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      "<Response url='http://localhost:59833/' request=<Request url='http://localhost:59833/' method='GET'>>",
+      null,
+      null
+    ]
+  }
+]

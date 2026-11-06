@@ -1,0 +1,155 @@
+{
+  "source_hash": "4ada199554cbc4e31b6e30b97536c38db92421dd3e2648285cc50939a490a3c3",
+  "sources": {
+    "Seeding/Department.json": {
+      "sha256": "32752e0924c37b734f7d5352b6d3cd6bed7e22ca5cee88c2cdf9170f00827769",
+      "rows": 4
+    },
+    "Seeding/DepartmentSection.json": {
+      "sha256": "61acf8d812a6d9d4d2f53de94eed521b722fdf7bcff7a998843344e7e0b958e9",
+      "rows": 19
+    },
+    "Seeding/User.json": {
+      "sha256": "39f0ba3760e83e897ea930d2688a3bc6d589bd827663aef1df95b02742d35303",
+      "rows": 36
+    },
+    "Seeding/Course.json": {
+      "sha256": "8a35d7226ebf8b78f89e9cd3e59d664625d438b362aaf9775e92601b2441f1c7",
+      "rows": 14
+    },
+    "Seeding/CourseDepartment.json": {
+      "sha256": "6d8d0d5145f752fdabb0daf49082c59894cf72883aea318c14fbd335747f62e3",
+      "rows": 18
+    },
+    "Seeding/CourseSection.json": {
+      "sha256": "fe40b67a08f5e9611fbf3f155b0613a29d05619eab16186135f69f0914aeedbd",
+      "rows": 108
+    },
+    "Seeding/Student.json": {
+      "sha256": "338118cf2aaf7000af65268119efe1f0b7492c675cb2bc462edce94c86df61b8",
+      "rows": 415
+    },
+    "Models/Data/DbSeeder.cs": {
+      "sha256": "0b4c3ff6b5866b260dad2a447cedec8e933f48216bc009031dc99d76fa4dad8b"
+    }
+  },
+  "counts": {
+    "departments": 4,
+    "department_sections": 19,
+    "app_users": 451,
+    "students": 415,
+    "academic_terms": 1,
+    "courses": 14,
+    "course_departments": 18,
+    "course_offerings": 14,
+    "course_sections": 108,
+    "enrollments": 2460
+  },
+  "roles": {
+    "admin": 6,
+    "doctor": 9,
+    "ta": 21,
+    "student": 415
+  },
+  "notes": [
+    "Original IDs retained for staff, students, courses, department sections, and course sections.",
+    "Student app-user IDs allocated above the highest staff ID; names are stored once in app_users.",
+    "Enrollments regenerated from CourseDepartment + matching CourseSection, as in DbSeeder.GenerateEnrollments.",
+    "Seed contains semester 2 but no year or term dates; legacy-semester-2 is an explicit import placeholder.",
+    "No passwords, artificial GPA/contact data, attendance records, or grades were imported."
+  ],
+  "data_checksums": {
+    "departments": {
+      "columns": [
+        "id",
+        "code",
+        "name"
+      ],
+      "sha256": "fd3c86f44855b2ffed45636adbe71282d5550427ead98405c37b00f30c44fa0e"
+    },
+    "department_sections": {
+      "columns": [
+        "id",
+        "department_id",
+        "number"
+      ],
+      "sha256": "1d1e2f7ada977ac5ab85c44f480f0aca2ca3d29031af74aaea4e6a71dd2858c5"
+    },
+    "app_users": {
+      "columns": [
+        "id",
+        "username",
+        "full_name",
+        "email",
+        "role"
+      ],
+      "sha256": "db9cbef61acbabdf0479a06af9f03f24fd9b23b286e79afc3c1b97d5ae928460"
+    },
+    "students": {
+      "columns": [
+        "id",
+        "user_id",
+        "university_id",
+        "level",
+        "department_id",
+        "department_section_id"
+      ],
+      "sha256": "ac4351032caa871f536914ff1eee150b65bd1eef0de5f137711f68de1d97a1c0"
+    },
+    "academic_terms": {
+      "columns": [
+        "id",
+        "code",
+        "name"
+      ],
+      "sha256": "dfb66abc6e03c6deb945a52f12310050b748d006a2b270212fd56e3dc9d2cfc3"
+    },
+    "courses": {
+      "columns": [
+        "id",
+        "code",
+        "name",
+        "level",
+        "legacy_semester"
+      ],
+      "sha256": "cfd6581004b743e55a34e4e30a0121f22384509da2dc636759fc3beb9adaa0fa"
+    },
+    "course_departments": {
+      "columns": [
+        "id",
+        "course_id",
+        "department_id"
+      ],
+      "sha256": "6b3156f3058c677b2841f5f44e4ca91a3e2058a85995b9d5c910d74b350ba2b5"
+    },
+    "course_offerings": {
+      "columns": [
+        "id",
+        "course_id",
+        "term_id",
+        "doctor_user_id"
+      ],
+      "sha256": "bc35e6d7626061b653fe69c459e8f9f88a8be25f884146c1349c17779ab8358f"
+    },
+    "course_sections": {
+      "columns": [
+        "id",
+        "offering_id",
+        "course_id",
+        "department_id",
+        "department_section_id",
+        "ta_user_id"
+      ],
+      "sha256": "cba7665acdca7196bf0319962140e298c4ff54a3f56c0a63da25e771c2f5f838"
+    },
+    "enrollments": {
+      "columns": [
+        "id",
+        "student_id",
+        "offering_id",
+        "course_section_id"
+      ],
+      "sha256": "e938ebcd4c7ecf6d8866d58ea5eedc24b16e4b151aaea704ddaf3a414a303dab"
+    }
+  }
+}

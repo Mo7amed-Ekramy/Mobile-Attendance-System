@@ -1,23 +1,52 @@
-# Mobile design system extraction
+# Mobile design system
 
-## Source and conflicts
+The app uses the Assiut National University logo in assets/images/logo.png,
+Arabic labels, and RTL layout. lib/theme.dart defines the Material 3 theme
+based on the university screens supplied by the user.
 
-The checked-out MVC application is an Identity scaffold. Its shared layout (`../legacy-attendance-system/Views/Shared/_Layout.cshtml`) uses Bootstrap, a white header, and Google Inter. `wwwroot/css/site.css` is mostly template styling. The actual custom login tokens are in `../legacy-attendance-system/wwwroot/css/login.css`, with matching values in `register.css` and `forgot.css`. The planning document `../legacy-attendance-system/docs/04-ux-ui-specification.md` proposes a different navy/teal palette; this prototype gives the implemented login stylesheet precedence for recognizable color and uses the planning document for mobile spacing, accessibility, and navigation rules.
-
-No university name or official logo was found. The available PNG files under `assets/team` are team images, not an institutional mark. “Attendance System” is a neutral temporary wordmark. The `Icons.school_rounded` glyph identifies the prototype; it is not presented as an official logo.
-
-## Tokens and adaptation
-
-| Element | Source value | Mobile application |
+| Token | Light value | Use |
 |---|---|---|
-| Primary | `#2F6FED` | Brand blue; darker `#1C54C7` for accessible filled controls |
-| Secondary | `#00BFA6` | Teal cue; darker `#007F70` for readable text/actions |
-| Canvas | `#F5F6FA` | App background |
-| Surface | `#FFFFFF` | Cards and inputs |
-| Main text | `#1F2937` | Body and headings |
-| Muted text | `#6B7280` | Darkened to `#596579` where needed for smaller labels |
-| Type | Inter, 12/14/16/18/22/28 px | Material text hierarchy with Inter preference, system fallback when offline |
-| Shapes | 8 px button and 12 px login card | 12 px controls, 16 px mobile cards, 16 px page gutter |
-| Feedback | Focus ring and login field underline | Material focus states, visible status text plus icons, snackbars and confirmation dialogs |
+| Primary | #5A3824 | Brown brand and primary actions |
+| Secondary | #8D5E3D | Bronze accents |
+| Canvas | #F9F9FB | Page background |
+| Warm surface | #F3EFEA | Inputs |
+| Surface | #FFFFFF | Cards |
+| Text | #2A211C | Body and headings |
+| Success | #177A4E | Positive status |
+| Warning | #8A5900 | Attention |
+| Error | #B3261E | Errors |
+| Page gutter | 16 dp | Padding |
+| Card radius | 16 dp | Cards |
+| Control radius | 12 dp | Inputs and buttons |
 
-The desktop navbar becomes role-specific bottom navigation (4–5 items). Course tables become stacked cards and status rows. Policy and grade data use labeled blocks instead of horizontal tables. Every primary control is at least 48 dp high. Pages scroll within SafeArea, and cards use flexible text columns. Light and dark theme colors are defined centrally in `lib/theme.dart`. The current app does not bundle Inter because the source project references it remotely rather than shipping a licensed font file; installed Inter is used where available with a system fallback.
+Dark mode uses a warm dark canvas and lighter brown/bronze controls. Typography
+uses the Material hierarchy and system fonts, without remote font dependencies.
+
+The shell has role-specific bottom navigation and a course/section selector.
+Doctors can include all assigned sections; TAs and students select only sections
+returned by their authenticated API. Pages scroll inside SafeArea with a maximum
+content width of 760 dp. Rosters and gradebooks use paginated student cards.
+
+Each role has a task-focused home screen with its primary action above the
+summary metrics. All roles have an attendance destination; students choose when
+to open the scanner. TAs can enter an assigned section workspace directly.
+Account-specific course/section/theme preferences are restored against the
+current permitted assignments.
+
+lib/widgets/common.dart supplies loading, empty, error/retry, and refresh states.
+Write actions wait for the API before showing success. Status labels accompany
+icons. Grade fields distinguish zero from missing. Missing operational records
+produce empty screens instead of invented data.
+
+Refresh preserves the last loaded form and its controllers until fresh data
+arrives. A failed refresh retains input and offers retry/dismiss controls.
+Grade paging/manual refresh and partial attendance exits require explicit
+discard decisions. Grade save/publication and attendance finalization use pinned
+footers; they remain visible while the roster scrolls. Status banners explain
+unsaved edits, saved corrections awaiting publication and incomplete totals.
+
+Primary buttons have a minimum height of 48 dp. Scanner errors are visible, and
+QR text input provides a manual alternative for local attendance testing.
+Physical-device camera behavior still needs hands-on validation.
+
+See [the role UI/UX review](docs/UI_UX_REVIEW.md) for current changes and evidence.

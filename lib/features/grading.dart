@@ -1,0 +1,671 @@
+import 'package:flutter/material.dart';
+
+import '../app_state.dart';
+import '../data/api.dart';
+import '../data/models.dart';
+import '../widgets/common.dart';
+import 'quizzes.dart';
+
+class GradesPage extends StatelessWidget {
+  const GradesPage(this.state, {super.key});
+  final AppState state;
+  @override
+  Widget build(BuildContext context) => RemotePage<dynamic>(
+      scope: state.scopeKey,
+      load: () async => {
+            'policy': await state.api.getCourse(state.course!, 'policy'),
+            'assessments': await state.api.getCourse(
+                state.course!, 'assessments',
+                sectionId: state.section?.id),
+            if (state.user!.role == Role.student)
+              'grades': await state.api.getCourse(state.course!, 'grades'),
+          },
+      builder: (data, reload) {
+        final policy = data['policy'] as Map<String, dynamic>?;
+        final assessments = data['assessments'] as List;
+        final student = state.user!.role == Role.student;
+        return PageContent(children: [
+          Text(student ? 'درجاتي المنشورة' : 'الدرجات والتقييمات',
+              style: Theme.of(context).textTheme.headlineSmall),
+          if (student) ...[
+            if (policy == null)
+              const EmptyPanel('لم تنشر لائحة الدرجات بعد',
+                  'ستظهر نتائجك بعد اعتماد اللائحة ونشر التقييمات.'),
+            if (policy != null) ...[
+              StatusRow('الدرجات المحققة حتى الآن',
+                  '${points(data['grades']['earned'])} / ${points(policy['total_points'])}'),
+              StatusRow(
+                  'المجموع النهائي',
+                  data['grades']['official_total'] == null
+                      ? 'غير مكتمل: توجد بنود لم يكتمل رصدها.'
+                      : points(data['grades']['official_total'])),
+              for (final category in data['grades']['categories'] as List)
+                StatusRow(category['name'] as String,
+                    '${points(category['earned'])} / ${points(category['max_points'])}${category['complete'] == true ? '' : ' · غير مكتمل'}'),
+            ],
+          ] else ...[
+            ActionCard(
+                title: 'لائحة توزيع الدرجات',
+                detail: policy == null
+                    ? 'لم تنشأ لائحة للمقرر.'
+                    : '${policy['state'] == 'published' ? 'معتمدة' : 'مسودة'} · ${points(policy['total_points'])} درجة',
+                icon: Icons.tune,
+                onTap: () async {
+                  await openPage(
+                      context,
+                      'لائحة توزيع الدرجات',
+                      PolicyPage(state.api, state.course!,
+                          editable: state.user!.role == Role.doctor));
+                  reload();
+                }),
+            if (policy != null)
+              AsyncButton(
+                  label: 'إضافة تقييم',
+                  icon: Icons.add,
+                  onPressed: () async {
+                    await openPage(
+                        context,
+                        'إضافة تقييم',
+                        AssessmentPage(state.api, state.course!, policy,
+                            sectionId: state.section?.id));
+                    reload();
+                  }),
+          ],
+          ActionCard(
+              title: student ? 'كويزات السكشن' : 'بنك الأسئلة وكويزات السكشن',
+              detail: 'الأسئلة والمحاولات والنتائج المحفوظة',
+              icon: Icons.quiz_outlined,
+              onTap: () async {
+                await openPage(context, 'كويزات السكشن', QuizzesPage(state));
+                reload();
+              }),
+          if (assessments.isEmpty)
+            const EmptyPanel('لا توجد تقييمات',
+                'ستظهر التقييمات المنشأة والمنشورة وفق صلاحية الحساب.'),
+          for (final assessment in assessments)
+            if (student)
+              StatusRow(
+                  assessment['title'] as String,
+                  '${assessment['category']} · ${assessment['state'] == 'excused' ? 'بعذر' : assessment['score'] == null ? 'لم ترصد النتيجة' : '${points(assessment['score'])} / ${points(assessment['max_points'])}'}')
+            else
+              ActionCard(
+                  title: assessment['title'] as String,
+                  detail:
+                      '${assessment['category']} · ${points(assessment['max_points'])} درجة',
+                  icon: Icons.grading,
+                  onTap: () async {
+                    await openPage(
+                        context,
+                        assessment['title'] as String,
+                        GradebookPage(state.api, state.course!, assessment,
+                            sectionId: state.section?.id,
+                            canPublish: state.user!.role == Role.doctor));
+                    reload();
+                  }),
+        ]);
+      });
+}
+
+class _CategoryForm {
+  _CategoryForm({Map<String, dynamic>? source, required int index})
+      : code = source?['code'] as String? ??
+            'category_${DateTime.now().microsecondsSinceEpoch}_$index',
+        name = TextEditingController(text: source?['name'] as String? ?? ''),
+        maximum = TextEditingController(
+            text: source?['max_points']?.toString() ?? '0'),
+        kind = source?['kind'] as String? ?? 'assessment',
+        mode = source?['allocation_mode'] as String? ?? 'fixed';
+  final String code;
+  final TextEditingController name, maximum;
+  String kind, mode;
+  void dispose() {
+    name.dispose();
+    maximum.dispose();
+  }
+
+  Map<String, dynamic> json() => {
+        'code': code,
+        'name': name.text.trim(),
+        'kind': kind,
+        'max_points': maximum.text,
+        'allocation_mode': mode
+      };
+}
+
+class PolicyPage extends StatefulWidget {
+  const PolicyPage(this.api, this.course, {super.key, required this.editable});
+  final AttendanceApi api;
+  final CourseOffering course;
+  final bool editable;
+  @override
+  State<PolicyPage> createState() => _PolicyPageState();
+}
+
+class _PolicyPageState extends State<PolicyPage> {
+  final total = TextEditingController(text: '100');
+  final categories = <_CategoryForm>[];
+  Map<String, dynamic>? policy;
+  bool initialized = false;
+  @override
+  void dispose() {
+    total.dispose();
+    for (final category in categories) {
+      category.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => RemotePage<dynamic>(
+      load: () => widget.api.getCourse(widget.course, 'policy'),
+      builder: (value, reload) {
+        final incoming = value as Map<String, dynamic>?;
+        final isPublished = incoming?['state'] == 'published';
+        if (!initialized ||
+            isPublished ||
+            policy?['state'] != incoming?['state']) {
+          initialized = true;
+          policy = incoming;
+          total.text = policy?['total_points']?.toString() ?? '100';
+          for (final category in categories) {
+            category.dispose();
+          }
+          categories.clear();
+          for (final category in policy?['categories'] as List? ?? []) {
+            categories.add(_CategoryForm(
+                source: category as Map<String, dynamic>,
+                index: categories.length));
+          }
+        } else {
+          policy = incoming;
+        }
+        final editable = widget.editable && policy?['state'] != 'published';
+        final allocated = categories.fold<double>(
+            0,
+            (sum, category) =>
+                sum + (double.tryParse(category.maximum.text) ?? 0));
+        return PageContent(children: [
+          StatusRow(
+              'لائحة المقرر',
+              policy?['state'] == 'published'
+                  ? 'لائحة منشورة ومقفلة'
+                  : 'مسودة: احفظ البنود ثم أضف التقييمات قبل الاعتماد.'),
+          TextField(
+              controller: total,
+              enabled: editable,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'المجموع الكلي'),
+              onChanged: (_) => setState(() {})),
+          Text(
+              'المجموع الموزع: ${allocated.toStringAsFixed(2)} / ${total.text}'),
+          for (var i = 0; i < categories.length; i++)
+            Card(
+                child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(children: [
+                      TextField(
+                          controller: categories[i].name,
+                          enabled: editable,
+                          decoration:
+                              const InputDecoration(labelText: 'اسم البند')),
+                      const SizedBox(height: 12),
+                      TextField(
+                          controller: categories[i].maximum,
+                          enabled: editable,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          decoration: const InputDecoration(
+                              labelText: 'الدرجات المخصصة'),
+                          onChanged: (_) => setState(() {})),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                          initialValue: categories[i].kind,
+                          decoration:
+                              const InputDecoration(labelText: 'نوع البند'),
+                          items: const [
+                            DropdownMenuItem(
+                                value: 'assessment',
+                                child: Text('تقييمات واختبارات')),
+                            DropdownMenuItem(
+                                value: 'lecture_attendance',
+                                child: Text('حضور المحاضرات')),
+                            DropdownMenuItem(
+                                value: 'section_attendance',
+                                child: Text('حضور السكاشن'))
+                          ],
+                          onChanged: !editable
+                              ? null
+                              : (value) => setState(() {
+                                    categories[i].kind = value!;
+                                    categories[i].mode = value == 'assessment'
+                                        ? 'fixed'
+                                        : 'proportional';
+                                  })),
+                      if (categories[i].kind == 'assessment') ...[
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                            key: ValueKey(
+                                '${categories[i].code}:${categories[i].kind}'),
+                            initialValue: categories[i].mode,
+                            decoration: const InputDecoration(
+                                labelText: 'طريقة احتساب الدرجة'),
+                            items: const [
+                              DropdownMenuItem(
+                                  value: 'fixed', child: Text('درجات ثابتة')),
+                              DropdownMenuItem(
+                                  value: 'normalized',
+                                  child: Text('تجميع نسبي'))
+                            ],
+                            onChanged: !editable
+                                ? null
+                                : (value) => setState(
+                                    () => categories[i].mode = value!)),
+                      ],
+                      if (editable)
+                        TextButton.icon(
+                            onPressed: () => setState(() {
+                                  categories.removeAt(i).dispose();
+                                }),
+                            icon: const Icon(Icons.delete_outline),
+                            label: const Text('حذف البند')),
+                    ]))),
+          if (categories.isEmpty)
+            const EmptyPanel(
+                'لا توجد بنود تقييم', 'أضف بنود اللائحة وحدد درجات كل بند.'),
+          if (editable) ...[
+            OutlinedButton.icon(
+                onPressed: () => setState(() =>
+                    categories.add(_CategoryForm(index: categories.length))),
+                icon: const Icon(Icons.add),
+                label: const Text('إضافة بند')),
+            AsyncButton(
+                label: 'حفظ مسودة اللائحة',
+                enabled: categories.isNotEmpty,
+                onPressed: () async {
+                  if (categories.any((c) => c.name.text.trim().isEmpty)) {
+                    throw const ApiException('اكتب اسم كل بند.');
+                  }
+                  final saved = await widget.api.writeCourse(
+                      widget.course,
+                      'policy',
+                      {
+                        'total_points': total.text,
+                        'categories': categories.map((c) => c.json()).toList()
+                      },
+                      method: 'PUT') as Map<String, dynamic>;
+                  if (mounted) setState(() => policy = saved);
+                  if (context.mounted) notice(context, 'تم حفظ مسودة اللائحة.');
+                }),
+            if (policy != null)
+              AsyncButton(
+                  label: 'اعتماد اللائحة',
+                  icon: Icons.publish,
+                  onPressed: () async {
+                    if (!await confirm(context, 'اعتماد لائحة الدرجات',
+                        'ستصبح اللائحة مقفلة بعد الاعتماد. احفظ أي تغييرات أولاً.')) {
+                      return;
+                    }
+                    await widget.api.writeCourse(
+                        widget.course,
+                        'policy',
+                        {
+                          'total_points': total.text,
+                          'categories': categories
+                              .map((category) => category.json())
+                              .toList(),
+                        },
+                        method: 'PUT');
+                    final published = await widget.api
+                            .writeCourse(widget.course, 'policy/publish', null)
+                        as Map<String, dynamic>;
+                    if (mounted) setState(() => policy = published);
+                    if (context.mounted) notice(context, 'تم اعتماد اللائحة.');
+                  }),
+          ],
+        ]);
+      });
+}
+
+class AssessmentPage extends StatefulWidget {
+  const AssessmentPage(this.api, this.course, this.policy,
+      {super.key, this.sectionId});
+  final AttendanceApi api;
+  final CourseOffering course;
+  final Map<String, dynamic> policy;
+  final int? sectionId;
+  @override
+  State<AssessmentPage> createState() => _AssessmentPageState();
+}
+
+class _AssessmentPageState extends State<AssessmentPage> {
+  final title = TextEditingController();
+  final maximum = TextEditingController();
+  int? category;
+  String kind = 'quiz';
+  @override
+  void dispose() {
+    title.dispose();
+    maximum.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final categories = (widget.policy['categories'] as List)
+        .where((c) => c['kind'] == 'assessment')
+        .toList();
+    return PageContent(children: [
+      TextField(
+          controller: title,
+          decoration: const InputDecoration(labelText: 'عنوان التقييم')),
+      DropdownButtonFormField<int>(
+          initialValue: category,
+          decoration: const InputDecoration(labelText: 'بند اللائحة'),
+          items: [
+            for (final c in categories)
+              DropdownMenuItem(
+                  value: c['id'] as int, child: Text(c['name'] as String))
+          ],
+          onChanged: (value) => category = value),
+      DropdownButtonFormField<String>(
+          initialValue: kind,
+          decoration: const InputDecoration(labelText: 'نوع التقييم'),
+          items: const [
+            DropdownMenuItem(value: 'quiz', child: Text('كويز')),
+            DropdownMenuItem(value: 'project', child: Text('مشروع')),
+            DropdownMenuItem(value: 'assignment', child: Text('تكليف')),
+            DropdownMenuItem(value: 'midterm', child: Text('ميدتيرم')),
+            DropdownMenuItem(value: 'final', child: Text('فاينال'))
+          ],
+          onChanged: (value) => kind = value!),
+      TextField(
+          controller: maximum,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'الدرجة العظمى')),
+      AsyncButton(
+          label: 'إنشاء التقييم',
+          onPressed: () async {
+            if (title.text.trim().isEmpty ||
+                category == null ||
+                (double.tryParse(maximum.text) ?? 0) <= 0) {
+              throw const ApiException(
+                  'اكتب عنواناً واختر بنداً ودرجة عظمى صحيحة.');
+            }
+            await widget.api.writeCourse(widget.course, 'assessments', {
+              'category_id': category,
+              'section_id': widget.sectionId,
+              'title': title.text.trim(),
+              'kind': kind,
+              'max_points': maximum.text
+            });
+            if (context.mounted) Navigator.pop(context, true);
+          }),
+    ]);
+  }
+}
+
+class GradebookPage extends StatefulWidget {
+  const GradebookPage(this.api, this.course, this.assessment,
+      {super.key, this.sectionId, required this.canPublish});
+  final AttendanceApi api;
+  final CourseOffering course;
+  final Map<String, dynamic> assessment;
+  final int? sectionId;
+  final bool canPublish;
+  @override
+  State<GradebookPage> createState() => _GradebookPageState();
+}
+
+class _GradebookPageState extends State<GradebookPage> {
+  final fields = <int, TextEditingController>{};
+  final states = <int, String>{};
+  final reason = TextEditingController();
+  Object? loadedData;
+  int offset = 0;
+  @override
+  void dispose() {
+    for (final field in fields.values) {
+      field.dispose();
+    }
+    reason.dispose();
+    super.dispose();
+  }
+
+  bool get _hasUnsaved {
+    // ADD-04: True when any in-page field differs from the last loaded server data.
+    if (loadedData == null) return false;
+    final rows = (loadedData as Map<String, dynamic>)['rows'] as List? ?? [];
+    for (final row in rows) {
+      final id = row['enrollment_id'] as int;
+      final text = fields[id]?.text.trim() ?? '';
+      final score = double.tryParse(text);
+      if (text.isNotEmpty && (score == null || !score.isFinite)) return true;
+      final loadedScore = amount(row['score']);
+      final loadedState = row['state'] as String;
+      final currentState = states[id] ?? loadedState;
+      if (score != loadedScore || currentState != loadedState) return true;
+    }
+    return false;
+  }
+
+  Future<bool> _confirmDiscard() async =>
+      !_hasUnsaved ||
+      await confirm(context, 'تغييرات غير محفوظة',
+          'الانتقال أو التحديث سيستبدل درجات الصفحة غير المحفوظة. هل تريد المتابعة؟');
+
+  Future<void> _changePage(int next) async {
+    if (!await _confirmDiscard() || !mounted) return;
+    setState(() => offset = next);
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (_hasUnsaved) {
+          final leave = await showDialog<bool>(
+              context: context,
+              builder: (dialog) => AlertDialog(
+                      title: const Text('توجد تغييرات غير محفوظة'),
+                      content: const Text(
+                          'هل تريد الخروج وتجاهل التغييرات غير المحفوظة؟'),
+                      actions: [
+                        TextButton(
+                            onPressed: () => Navigator.pop(dialog, false),
+                            child: const Text('تراجع')),
+                        FilledButton(
+                            onPressed: () => Navigator.pop(dialog, true),
+                            child: const Text('خروج بدون حفظ')),
+                      ]));
+          if (leave != true) return;
+        }
+        if (context.mounted) Navigator.pop(context);
+      },
+      child: RemotePage<dynamic>(
+          beforeRefresh: _confirmDiscard,
+          scope: '$offset',
+          load: () => widget.api.getCourse(
+              widget.course, 'assessments/${widget.assessment['id']}/results',
+              sectionId: widget.sectionId,
+              query: {'offset': offset, 'limit': 50}),
+          builder: (data, reload) {
+            final rows = data['rows'] as List;
+            if (!identical(data, loadedData)) {
+              loadedData = data;
+              for (final row in rows) {
+                final id = row['enrollment_id'] as int;
+                fields.putIfAbsent(id, TextEditingController.new).text =
+                    row['score']?.toString() ?? '';
+                states[id] = row['state'] as String;
+              }
+            }
+            return PageContent(
+                footer: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      AsyncButton(
+                          label: 'حفظ درجات الصفحة',
+                          enabled: rows.isNotEmpty,
+                          onPressed: () async {
+                            final changed = <Map<String, dynamic>>[];
+                            for (final row in rows) {
+                              final text =
+                                  fields[row['enrollment_id']]!.text.trim();
+                              final score =
+                                  text.isEmpty ? null : double.tryParse(text);
+                              if (text.isNotEmpty &&
+                                  (score == null ||
+                                      !score.isFinite ||
+                                      score < 0 ||
+                                      score >
+                                          amount(widget
+                                              .assessment['max_points'])!)) {
+                                throw const ApiException(
+                                    'توجد درجة خارج الحدود المسموحة.');
+                              }
+                              if (score != amount(row['score']) ||
+                                  states[row['enrollment_id']] !=
+                                      row['state']) {
+                                changed.add({
+                                  'enrollment_id': row['enrollment_id'],
+                                  'score': text.isEmpty ? null : text,
+                                  'state': states[row['enrollment_id']],
+                                  'revision': row['revision'],
+                                });
+                              }
+                            }
+                            if (changed.isEmpty) {
+                              notice(context, 'لا توجد تغييرات لحفظها.');
+                              return;
+                            }
+                            try {
+                              await widget.api.writeCourse(
+                                  widget.course,
+                                  'assessments/${widget.assessment['id']}/results',
+                                  {
+                                    'rows': changed,
+                                    'reason': reason.text.trim()
+                                  },
+                                  method: 'PATCH');
+                            } on ApiException catch (error) {
+                              if (error.status == 409) reload();
+                              rethrow;
+                            }
+                            if (context.mounted) {
+                              notice(context, 'تم حفظ الدرجات.');
+                            }
+                            reload();
+                          }),
+                      if (widget.canPublish)
+                        AsyncButton(
+                            label: 'نشر نتائج التقييم',
+                            enabled: !_hasUnsaved,
+                            icon: Icons.publish,
+                            onPressed: () async {
+                              if (!await confirm(context, 'نشر النتائج',
+                                  'سيتم نشر النتائج المحفوظة فقط للطلاب. احفظ أي تغييرات أولاً.')) {
+                                return;
+                              }
+                              await widget.api.writeCourse(
+                                  widget.course,
+                                  'assessments/${widget.assessment['id']}/publish',
+                                  null);
+                              if (context.mounted) {
+                                notice(context, 'تم نشر النتائج.');
+                              }
+                              reload();
+                            }),
+                      Row(children: [
+                        Expanded(
+                            child: OutlinedButton(
+                                onPressed: offset == 0
+                                    ? null
+                                    : () => _changePage(offset - 50),
+                                child: const Text('السابق'))),
+                        const SizedBox(width: 8),
+                        Text(
+                            '${offset + 1}–${offset + rows.length} / ${data['total']}'),
+                        const SizedBox(width: 8),
+                        Expanded(
+                            child: OutlinedButton(
+                                onPressed: offset + 50 >= (data['total'] as int)
+                                    ? null
+                                    : () => _changePage(offset + 50),
+                                child: const Text('التالي')))
+                      ]),
+                    ]),
+                children: [
+                  StatusRow(widget.assessment['title'] as String,
+                      'الدرجة العظمى ${points(widget.assessment['max_points'])}'),
+                  Text('الصفر نتيجة مسجلة، والحقل الفارغ نتيجة لم ترصد.'),
+                  if (_hasUnsaved)
+                    const NoticeBanner(
+                        'تغييرات غير محفوظة · احفظ درجات الصفحة قبل الانتقال أو النشر.',
+                        icon: Icons.edit_outlined),
+                  if (!_hasUnsaved &&
+                      data['assessment']?['published_at'] != null &&
+                      rows.any((row) =>
+                          row['visibility'] == 'draft' && row['revision'] > 0))
+                    const NoticeBanner(
+                        'توجد درجات محفوظة تنتظر إعادة النشر. النتائج السابقة ما زالت ظاهرة للطلاب.'),
+                  OutlinedButton.icon(
+                      onPressed: () async {
+                        if (await _confirmDiscard()) reload();
+                      },
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('تحديث الدرجات')),
+                  TextField(
+                      controller: reason,
+                      decoration: const InputDecoration(
+                          labelText: 'سبب تصحيح درجة منشورة، عند الحاجة')),
+                  for (final row in rows)
+                    Card(
+                        child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(row['full_name'] as String,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium),
+                                  Text(row['university_id'] as String),
+                                  const SizedBox(height: 8),
+                                  TextField(
+                                      controller: fields[row['enrollment_id']],
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                              decimal: true),
+                                      decoration: const InputDecoration(
+                                          labelText: 'الدرجة'),
+                                      onChanged: (value) => setState(() {
+                                            states[row['enrollment_id']
+                                                    as int] =
+                                                value.trim().isEmpty
+                                                    ? 'unrecorded'
+                                                    : 'recorded';
+                                          })),
+                                  CheckboxListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      title: const Text('بعذر'),
+                                      value: states[row['enrollment_id']] ==
+                                          'excused',
+                                      onChanged: (value) => setState(() {
+                                            states[row['enrollment_id']
+                                                    as int] =
+                                                value!
+                                                    ? 'excused'
+                                                    : 'unrecorded';
+                                            fields[row['enrollment_id']]!
+                                                .clear();
+                                          })),
+                                ]))),
+                  if (rows.isEmpty)
+                    const EmptyPanel(
+                        'لا يوجد طلاب', 'لا توجد تسجيلات ضمن السكشن المحدد.'),
+                ]);
+          }));
+}

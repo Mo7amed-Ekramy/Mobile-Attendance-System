@@ -1,5 +1,5 @@
 name: university_attendance_mobile
-description: Local Flutter prototype of the university attendance system.
+description: PostgreSQL-backed university attendance and grading application.
 publish_to: none
 version: 0.1.0+1
 
@@ -11,6 +11,10 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
+  http: ^1.5.0
+  flutter_secure_storage: ^9.2.4
+  mobile_scanner: ^7.1.0
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_test:
@@ -21,4 +25,3 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
-    - national_university_logo_2.png

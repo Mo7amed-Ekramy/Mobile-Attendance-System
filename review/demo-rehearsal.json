@@ -1,0 +1,55 @@
+{
+  "database": "Temporary shared rehearsal database; removed afterward",
+  "workflow_layer": "HTTP API; three independent Chrome login/report/restoration views",
+  "scenarios": [
+    {
+      "scenario": "Shared API attendance, quiz, publication and duplicate protection",
+      "status": "PASS"
+    },
+    {
+      "scenario": "doctor independent Chrome login and CS381/SE1 scope",
+      "status": "PASS"
+    },
+    {
+      "scenario": "ta independent Chrome login and CS381/SE1 scope",
+      "status": "PASS"
+    },
+    {
+      "scenario": "student independent Chrome login and CS381/SE1 scope",
+      "status": "PASS"
+    },
+    {
+      "scenario": "Student Chrome displays published results in shared scope",
+      "status": "PASS"
+    },
+    {
+      "scenario": "doctor Chrome renders selected-section report",
+      "status": "PASS"
+    },
+    {
+      "scenario": "ta Chrome renders selected-section report",
+      "status": "PASS"
+    },
+    {
+      "scenario": "doctor Chrome restores its session after API restart",
+      "status": "PASS"
+    },
+    {
+      "scenario": "ta Chrome restores its session after API restart",
+      "status": "PASS"
+    },
+    {
+      "scenario": "student Chrome restores its session after API restart",
+      "status": "PASS"
+    },
+    {
+      "scenario": "Saved attendance, grades and notifications survive API restart",
+      "status": "PASS"
+    },
+    {
+      "scenario": "No uncaught browser application exceptions",
+      "status": "PASS"
+    }
+  ],
+  "success": true
+}

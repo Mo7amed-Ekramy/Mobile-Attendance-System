@@ -28,7 +28,6 @@ abstract final class Brand {
     return base.copyWith(
       scaffoldBackgroundColor: dark ? const Color(0xFF241A15) : canvas,
       textTheme: base.textTheme.apply(
-        fontFamily: 'Inter',
         bodyColor: dark ? Colors.white : ink,
         displayColor: dark ? Colors.white : ink,
       ),

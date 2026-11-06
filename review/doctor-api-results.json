@@ -1,0 +1,620 @@
+[
+  [
+    "Login",
+    "Valid doctor credentials select doctor role",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Login",
+    "Username case and surrounding whitespace",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Login",
+    "Blank username rejected",
+    "PASS",
+    "HTTP 422"
+  ],
+  [
+    "Login",
+    "Blank password rejected",
+    "PASS",
+    "HTTP 422"
+  ],
+  [
+    "Login",
+    "Wrong password rejected",
+    "PASS",
+    "HTTP 401"
+  ],
+  [
+    "Login",
+    "Unknown username rejected",
+    "PASS",
+    "HTTP 401"
+  ],
+  [
+    "Login",
+    "Password case matters",
+    "PASS",
+    "HTTP 401"
+  ],
+  [
+    "Login",
+    "Password whitespace is not silently removed",
+    "PASS",
+    "HTTP 401"
+  ],
+  [
+    "Login",
+    "SQL-like username is rejected",
+    "PASS",
+    "HTTP 401"
+  ],
+  [
+    "Session",
+    "Anonymous profile request rejected",
+    "PASS",
+    "HTTP 401"
+  ],
+  [
+    "Session",
+    "Invented bearer token rejected",
+    "PASS",
+    "HTTP 401"
+  ],
+  [
+    "Session",
+    "Restore existing bearer session/profile",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Session",
+    "Server session expiry enforced",
+    "PASS",
+    "Expired token rejected with HTTP 401"
+  ],
+  [
+    "Login",
+    "Disabled doctor account cannot sign in or use a session",
+    "PASS",
+    "Disabled login and existing token both rejected"
+  ],
+  [
+    "Login",
+    "Repeated failed attempts are throttled",
+    "PASS",
+    "First 10 failures reject credentials; next attempt returns HTTP 429"
+  ],
+  [
+    "Courses",
+    "Assigned courses loaded with actual sections",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Permissions",
+    "Other doctor course cannot be read",
+    "PASS",
+    "HTTP 403"
+  ],
+  [
+    "Rosters",
+    "Full assigned course roster is paginated",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Rosters",
+    "Next page has different enrollment rows",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Rosters",
+    "University ID search finds exact student",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Rosters",
+    "Section selection constrains eligible students",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Rosters",
+    "Out-of-scope section rejected",
+    "PASS",
+    "HTTP 403"
+  ],
+  [
+    "Course creation",
+    "Actual department sections and active TAs loaded",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Course creation",
+    "New offering, assignment, and enrollments persist",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Course creation",
+    "Duplicate code rejected",
+    "PASS",
+    "HTTP 409"
+  ],
+  [
+    "Course creation",
+    "Invalid section rejected",
+    "PASS",
+    "HTTP 422"
+  ],
+  [
+    "Course creation",
+    "Invalid TA rejected",
+    "PASS",
+    "HTTP 422"
+  ],
+  [
+    "Course creation",
+    "TA cannot create a course",
+    "PASS",
+    "HTTP 403"
+  ],
+  [
+    "Assignments",
+    "Doctor views all assigned course sections",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Policy",
+    "Fixed allocation cannot publish an underfilled budget",
+    "PASS",
+    "HTTP 422"
+  ],
+  [
+    "Policy",
+    "Fixed allocation cannot exceed budget",
+    "PASS",
+    "HTTP 422"
+  ],
+  [
+    "Policy",
+    "Fully allocated fixed policy can publish",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Lecture attendance",
+    "Opening a lecture saves eligible roster",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Lecture attendance",
+    "QR credentials rotate with an expiry",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Permissions",
+    "Doctor cannot check in as a student",
+    "PASS",
+    "HTTP 403"
+  ],
+  [
+    "Lecture attendance",
+    "Counterpart student check-in appears in doctor roster",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Lecture attendance",
+    "Close materializes absences without overwriting presence",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Lecture attendance",
+    "Closing again is safe",
+    "PASS",
+    "HTTP 200"
+  ],
+  [
+    "Lecture attendance",
+    "QR is unavailable after closing",
+    "PASS",
+    "HTTP 409"
+  ],
+  [
+    "Lecture attendance",
+    "Late student check-in rejected",
+    "PASS",
+    "HTTP 409"
+  ],
+  [
+    "Reports",
+    "Shared closed lecture counted for selected section",
+    "FAIL",
+    "AssertionError: Shared lecture shown in attendance but omitted from section report"
+  ],
+  [
+    "Reports",
+    "All-course report counts closed lecture",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Policy",
+    "Publishing incomplete total is rejected",
+    "PASS",
+    "HTTP 422"
+  ],
+  [
+    "Policy",
+    "Saved draft categories returned with stable IDs",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Policy",
+    "TA cannot modify doctor policy",
+    "PASS",
+    "HTTP 403"
+  ],
+  [
+    "Policy",
+    "Publish requires an assessment in normalized category",
+    "PASS",
+    "HTTP 422"
+  ],
+  [
+    "Assessment",
+    "Created assessment returns selected section only",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Policy",
+    "Used category cannot change to attendance kind",
+    "PASS",
+    "HTTP 422"
+  ],
+  [
+    "Policy",
+    "Published policy is visible to student and locked",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Policy",
+    "Direct editing of published policy rejected",
+    "PASS",
+    "HTTP 409"
+  ],
+  [
+    "Grades",
+    "Zero and unrecorded states are stored differently",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Grades",
+    "Draft results hidden from student",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Grades",
+    "Published zero remains official zero",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Grades",
+    "Score above maximum rejected",
+    "PASS",
+    "HTTP 422"
+  ],
+  [
+    "Grades",
+    "Negative score rejected",
+    "PASS",
+    "HTTP 422"
+  ],
+  [
+    "Grades",
+    "Existing stale revision rejected",
+    "PASS",
+    "HTTP 409"
+  ],
+  [
+    "Grades",
+    "Published correction requires a reason",
+    "PASS",
+    "HTTP 422"
+  ],
+  [
+    "Grades",
+    "Previous published snapshot retained during correction",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Grades",
+    "Every follow-up correction still requires a reason",
+    "FAIL",
+    "AssertionError: PATCH /courses/1/assessments/3/results: expected HTTP 422, got 200"
+  ],
+  [
+    "Grades",
+    "Reasoned correction audit persists",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Grades",
+    "Concurrent initial edits do not silently overwrite",
+    "FAIL",
+    "AssertionError: Two initial revision-0 writes returned [200, 200], expected one success and one conflict"
+  ],
+  [
+    "Question bank",
+    "Invalid correct-answer index rejected",
+    "PASS",
+    "HTTP 422"
+  ],
+  [
+    "Question bank",
+    "Blank option rejected",
+    "PASS",
+    "HTTP 422"
+  ],
+  [
+    "Question bank",
+    "Questions and marked answers persist for staff",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Permissions",
+    "Student cannot fetch bank answer keys",
+    "PASS",
+    "HTTP 403"
+  ],
+  [
+    "Quiz creation",
+    "Request exceeding question bank rejected",
+    "PASS",
+    "HTTP 422"
+  ],
+  [
+    "Quiz creation",
+    "Doctor-created quiz appears with result link",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Permissions",
+    "Doctor cannot start a student attempt",
+    "PASS",
+    "HTTP 403"
+  ],
+  [
+    "Quiz results",
+    "Counterpart student sees questions without answer keys",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Quiz results",
+    "Server-scored quiz appears in doctor gradebook",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Quiz results",
+    "Publishing exposes score to counterpart student",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Notifications",
+    "Workflow creates student notifications",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Notifications",
+    "Doctor cannot mark another user notification read",
+    "PASS",
+    "HTTP 404"
+  ],
+  [
+    "Notifications",
+    "Own empty notification inbox loads",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "Persistence",
+    "Records survive doctor logout and sign-in",
+    "PASS",
+    "Logout revoked old token; questions, sessions, and assessments persisted"
+  ],
+  [
+    "UI Login",
+    "Blank form displays both required-field messages",
+    "PASS",
+    "Required-field messages visible"
+  ],
+  [
+    "UI Login",
+    "Wrong password shows credential error and remains signed out",
+    "PASS",
+    "Credential rejection visible"
+  ],
+  [
+    "UI Login",
+    "Valid uppercase/whitespace doctor username reaches actual home",
+    "PASS",
+    "POST login, assigned courses, and home succeeded"
+  ],
+  [
+    "UI Home",
+    "Doctor navigation shows all five destinations",
+    "PASS",
+    "Verified"
+  ],
+  [
+    "UI Session",
+    "Reload restores the authenticated doctor session",
+    "PASS",
+    "Session restored without credential entry"
+  ],
+  [
+    "UI Courses",
+    "Course list and local course search retain typed text",
+    "PASS",
+    "Course search retained"
+  ],
+  [
+    "UI Rosters",
+    "Typing a roster search preserves text and focus",
+    "FAIL",
+    "AssertionError: Roster search resets its text during loading"
+  ],
+  [
+    "UI Scope",
+    "Doctor can select CS381 section 1 explicitly",
+    "PASS",
+    "Shared scope selectable"
+  ],
+  [
+    "UI Course creation",
+    "Creation form opens and rejects incomplete input",
+    "PASS",
+    "Course creation form and required validation exercised; successful write tested through HTTP"
+  ],
+  [
+    "UI Lecture attendance",
+    "Validate, open lecture, and display QR controls",
+    "PASS",
+    "Lecture created through browser and QR/close screen rendered"
+  ],
+  [
+    "UI Lecture attendance",
+    "Doctor closes lecture through confirmation",
+    "PASS",
+    "لا يوجد رمز نشط"
+  ],
+  [
+    "UI Policy",
+    "Published policy screen is read-only",
+    "PASS",
+    "Published policy displayed with disabled fields"
+  ],
+  [
+    "UI Policy",
+    "Create/save policy draft and publish it through browser",
+    "PASS",
+    "Doctor created/saved draft and published it through UI after API setup of the required shared assessment"
+  ],
+  [
+    "UI Assessment",
+    "Assessment form opens and validates required fields",
+    "PASS",
+    "اكتب عنواناً واختر بنداً"
+  ],
+  [
+    "UI Grades",
+    "Save explicit zero from browser with correction reason",
+    "PASS",
+    "تم حفظ الدرجات"
+  ],
+  [
+    "UI Grades",
+    "Excused checkbox updates when entering a numeric grade",
+    "FAIL",
+    "AssertionError: Excused remains visually checked after entering a recorded score"
+  ],
+  [
+    "UI Grades",
+    "Publish saved assessment results through confirmation",
+    "PASS",
+    "تم نشر النتائج"
+  ],
+  [
+    "UI Question bank",
+    "Read questions, validate editor, and save a question",
+    "PASS",
+    "Doctor browser question"
+  ],
+  [
+    "UI Quiz creation",
+    "Quiz creation form opens and validates input",
+    "PASS",
+    "راجع عنوان الكويز والسكشن"
+  ],
+  [
+    "UI Quiz results",
+    "Submitted quiz opens the staff gradebook",
+    "PASS",
+    "الدرجة العظمى"
+  ],
+  [
+    "UI Assignments",
+    "Teaching-assignment view loads real sections/TAs",
+    "PASS",
+    "سكشن"
+  ],
+  [
+    "UI Reports",
+    "Report view loads student/session counts",
+    "PASS",
+    "عدد الطلاب"
+  ],
+  [
+    "UI Notifications",
+    "Own empty inbox displays its empty state",
+    "PASS",
+    "لا توجد إشعارات"
+  ],
+  [
+    "UI Theme",
+    "Doctor can switch to dark mode",
+    "PASS",
+    "Dark mode switch changes current session theme"
+  ],
+  [
+    "UI Logout",
+    "Confirmed logout returns to login and revokes token",
+    "PASS",
+    "Logged out and revoked"
+  ],
+  [
+    "UI Login",
+    "Offline login error and retry are handled",
+    "PASS",
+    "Connection error shown; retry after connection recovery succeeds"
+  ],
+  [
+    "UI Session",
+    "Expired session exits doctor screens and returns to login",
+    "PASS",
+    "Expired session returned to sign-in"
+  ],
+  [
+    "UI Runtime",
+    "No uncaught browser page errors during journeys",
+    "PASS",
+    "Verified"
+  ]
+]

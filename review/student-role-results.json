@@ -1,0 +1,912 @@
+[
+  {
+    "name": "login: correct student credentials",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "HTTP 200"
+  },
+  {
+    "name": "login: wrong password rejected",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "HTTP 401"
+  },
+  {
+    "name": "login: unknown identifier rejected",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "HTTP 401"
+  },
+  {
+    "name": "login: blank identifier rejected",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "HTTP 422"
+  },
+  {
+    "name": "login: blank password rejected",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "HTTP 422"
+  },
+  {
+    "name": "login: whitespace identifier rejected",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "HTTP 401"
+  },
+  {
+    "name": "login: whitespace password rejected",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "HTTP 401"
+  },
+  {
+    "name": "login: identifier surrounding whitespace accepted",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "HTTP 200"
+  },
+  {
+    "name": "login: password surrounding whitespace not silently trimmed",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "HTTP 401"
+  },
+  {
+    "name": "login: oversized identifier rejected",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "HTTP 422"
+  },
+  {
+    "name": "login: oversized password rejected",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "HTTP 422"
+  },
+  {
+    "name": "login: SQL-like identifier is not accepted",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "HTTP 401"
+  },
+  {
+    "name": "login: another role password is rejected",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "HTTP 401"
+  },
+  {
+    "name": "login: username alias/case and university ID both work",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Case-insensitive username alias and separate university ID both authenticate"
+  },
+  {
+    "name": "login: actual imported username works separately from university ID",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "HTTP 200"
+  },
+  {
+    "name": "login: imported admin blocked from mobile roles",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "login: unauthenticated request rejected",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "يرجى تسجيل الدخول."
+    }
+  },
+  {
+    "name": "login: forged bearer rejected",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "انتهت الجلسة. يرجى تسجيل الدخول مرة أخرى."
+    }
+  },
+  {
+    "name": "login: deactivated account cannot sign in or keep session",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Inactive login and existing session both rejected"
+  },
+  {
+    "name": "login: expired session rejected",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "HTTP 401 after server expiry"
+  },
+  {
+    "name": "login: logout revokes token and relogin works",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Logout revoked the stored session"
+  },
+  {
+    "name": "login: repeated failures are throttled",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "10 failures trigger HTTP 429, even for subsequent correct credentials"
+  },
+  {
+    "name": "profile: university ID/department/section present",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "courses: actual enrollment and section isolation",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "6 enrolled offerings, one own section each; unassigned course denied"
+  },
+  {
+    "name": "permissions: student denied /courses/1/roster",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "هذه العملية خاصة بأعضاء هيئة التدريس."
+    }
+  },
+  {
+    "name": "permissions: student denied /courses/1/questions",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "هذه العملية خاصة بأعضاء هيئة التدريس."
+    }
+  },
+  {
+    "name": "permissions: student denied /courses/1/assignments",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "هذه العملية خاصة بأعضاء هيئة التدريس."
+    }
+  },
+  {
+    "name": "permissions: student denied /courses/1/report",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "هذه العملية خاصة بأعضاء هيئة التدريس."
+    }
+  },
+  {
+    "name": "permissions: student denied /catalog-options",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "هذه العملية خاصة بدكتور المقرر."
+    }
+  },
+  {
+    "name": "permissions: student cannot write /courses/1/sessions",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "هذه العملية خاصة بأعضاء هيئة التدريس."
+    }
+  },
+  {
+    "name": "permissions: student cannot write /courses/1/questions",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "هذه العملية خاصة بأعضاء هيئة التدريس."
+    }
+  },
+  {
+    "name": "permissions: student cannot write /courses",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "هذه العملية خاصة بدكتور المقرر."
+    }
+  },
+  {
+    "name": "permissions: student cannot write /courses/1/policy/publish",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "هذه العملية خاصة بدكتور المقرر."
+    }
+  },
+  {
+    "name": "grades: no policy gives explicit empty state",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "attendance: no sessions gives empty list",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "quizzes: no quizzes gives empty list",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "notifications: no events gives empty list",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "attendance: valid QR records own attendance",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "attendance: duplicate QR returns original receipt",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "attendance: invalid QR format/session invalid_token",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "رمز الحضور غير صحيح."
+    }
+  },
+  {
+    "name": "attendance: invalid QR format/session v2",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "رمز الحضور غير صحيح."
+    }
+  },
+  {
+    "name": "attendance: invalid QR format/session v1",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "رمز الحضور غير صحيح."
+    }
+  },
+  {
+    "name": "attendance: invalid QR format/session v1",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "جلسة الحضور غير موجودة."
+    }
+  },
+  {
+    "name": "attendance: staff QR endpoint forbidden to student",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "هذه العملية خاصة بأعضاء هيئة التدريس."
+    }
+  },
+  {
+    "name": "attendance: own detail contains no roster",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "attendance: QR for another section rejected",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "أنت غير مسجل في هذه الجلسة."
+    }
+  },
+  {
+    "name": "attendance: another section detail rejected",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "أنت غير مسجل في هذا السكشن."
+    }
+  },
+  {
+    "name": "attendance: expired QR rejected",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "انتهت صلاحية الرمز. امسح الرمز الجديد."
+    }
+  },
+  {
+    "name": "attendance: closed session QR rejected",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "جلسة الحضور مغلقة أو انتهت مدتها."
+    }
+  },
+  {
+    "name": "attendance: closed lecture materializes own absence",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "attendance: draft section excluded from own list",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "attendance: guessed draft section detail is hidden",
+    "layer": "API",
+    "status": "FAIL",
+    "detail": "GET /courses/1/sessions/5: expected 403, got 200"
+  },
+  {
+    "name": "attendance: finalized excuse shown to student",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "grades: counterpart grading setup",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Doctor prerequisite policy/assessment created through API"
+  },
+  {
+    "name": "grades: draft policy and assessments hidden",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "grades: student cannot see staff gradebook",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "هذه العملية خاصة بأعضاء هيئة التدريس."
+    }
+  },
+  {
+    "name": "grades: student cannot edit grades",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "هذه العملية خاصة بأعضاء هيئة التدريس."
+    }
+  },
+  {
+    "name": "grades: missing score leaves official total incomplete",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "grades: saved unpublished score remains hidden",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "grades: published zero remains distinct from missing",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "grades: closed lecture attendance gives 50 percent of category",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "grades: pending correction retains published zero",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "grades: republished correction updates own grade",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "grades: published excuse is explicit and has no score",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "quizzes: only own section appears",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "quizzes: another section start forbidden",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "الكويز غير مخصص لسكشنك."
+    }
+  },
+  {
+    "name": "quizzes: student response excludes answer keys",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "quizzes: autosave/resume preserves answers/deadline/option order",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "quizzes: unrelated option rejected",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "الإجابة لا تنتمي إلى أسئلة هذا الكويز."
+    }
+  },
+  {
+    "name": "quizzes: submit locks attempt and hides score until publication",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "quizzes: saved answers immutable after submission",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "انتهت المحاولة. لا يمكن تعديل الإجابات."
+    }
+  },
+  {
+    "name": "quizzes: repeated submit returns same completed attempt",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "quizzes: published score visible to own student",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "quizzes: expired autosave rejected",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "انتهت المحاولة. لا يمكن تعديل الإجابات."
+    }
+  },
+  {
+    "name": "quizzes: late submit cannot add answers after deadline",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Server scored only the previously autosaved answer"
+  },
+  {
+    "name": "quizzes: abandoned expired attempt finalizes without reopening",
+    "layer": "API",
+    "status": "FAIL",
+    "detail": "Expired abandoned attempt remains in_progress"
+  },
+  {
+    "name": "quizzes: never-started expired quiz rejected",
+    "layer": "API",
+    "status": "PASS",
+    "detail": {
+      "detail": "الكويز مغلق أو انتهت مدته."
+    }
+  },
+  {
+    "name": "notifications: scoped events/read state/recipient isolation",
+    "layer": "API",
+    "status": "PASS",
+    "detail": "Quiz/publication events present; read persisted; another recipient denied"
+  },
+  {
+    "name": "persistence: logout/login retains own published results",
+    "layer": "API",
+    "status": "PASS",
+    "detail": [
+      "Logout revoked the stored session",
+      "HTTP 200",
+      null
+    ]
+  },
+  {
+    "name": "login UI: blank fields display validation",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      null,
+      null,
+      null
+    ],
+    "verification_note": "Focused login recheck after awaiting Flutter editing-focus and label updates"
+  },
+  {
+    "name": "login UI: password show/hide controls work",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Verified",
+    "verification_note": "Focused login recheck after awaiting Flutter editing-focus and label updates"
+  },
+  {
+    "name": "login UI: wrong password shows error and remains signed out",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      null,
+      null,
+      null
+    ],
+    "verification_note": "Focused login recheck after awaiting Flutter editing-focus and label updates"
+  },
+  {
+    "name": "login UI: university-ID login reaches student tabs",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Verified",
+    "verification_note": "Focused login recheck after awaiting Flutter editing-focus and label updates"
+  },
+  {
+    "name": "login UI: refresh restores secure session",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      "<Response url='http://localhost:59833/' request=<Request url='http://localhost:59833/' method='GET'>>",
+      null,
+      null
+    ],
+    "verification_note": "Focused login recheck after awaiting Flutter editing-focus and label updates"
+  },
+  {
+    "name": "navigation UI: student has five correct destinations",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "navigation UI: course search retains text and own records",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "name": "navigation UI: open CS381 course and its own section details",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "name": "navigation UI: home respects selected CS381",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      null,
+      null
+    ]
+  },
+  {
+    "name": "navigation UI: scope chooser offers only own section",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "navigation UI: refresh reloads records without signing out",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      null,
+      null
+    ]
+  },
+  {
+    "name": "scanner UI: open scan screen/manual fallback",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "name": "scanner UI: unavailable camera gives clear fallback",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Headless Chrome with no physical camera displays the manual-entry fallback"
+  },
+  {
+    "name": "scanner UI: invalid manual payload displays server error",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "name": "scanner UI: failed submission keeps manual form expanded",
+    "layer": "Chrome",
+    "status": "FAIL",
+    "detail": "Manual entry panel collapses after failed check-in"
+  },
+  {
+    "name": "scanner UI: valid manual QR persists attendance receipt",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Real browser POST persisted own present record in isolated database"
+  },
+  {
+    "name": "scanner UI: duplicate shows already-recorded receipt",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "name": "scanner UI: closed QR rejects with useful error",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "attendance UI: attendance log percentages and excuses shown",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "name": "attendance UI: own lecture detail excludes staff roster",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "name": "grades UI: published grades and incomplete total visible",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "name": "grades UI: no student assessment editor or publication controls",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "quizzes UI: own section quiz listing hides other section",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "name": "quizzes UI: start real attempt and show question timer",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "name": "quizzes UI: answer selection autosaves on server",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "quizzes UI: next/previous navigation retains attempt",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "name": "quizzes UI: second answer autosaves",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "quizzes UI: submit confirmation and hidden result state",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "name": "quizzes UI: publication makes server-scored result visible",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Doctor publication reached the student after reopening completed attempt"
+  },
+  {
+    "name": "quizzes UI: completed attempt has no submit button",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "quizzes UI: reopening completed quiz preserves result",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "name": "quizzes UI: countdown automatically submits saved answers",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Real countdown automatically completed the attempt at its short test deadline"
+  },
+  {
+    "name": "notifications UI: open events and mark published result read",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Read action persisted for the logged-in student recipient"
+  },
+  {
+    "name": "profile UI: student university ID shown",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "name": "settings UI: dark mode toggles and resets",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "logout UI: cancel keeps authenticated student",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      null,
+      null
+    ]
+  },
+  {
+    "name": "network UI: offline refresh displays error without invented data",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "logout UI: confirm clears student UI and revokes bearer",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Logout removed role UI and revoked its actual browser bearer session"
+  },
+  {
+    "name": "login UI: offline failure stays on sign-in with useful error",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Offline login reports connection error and does not authenticate"
+  },
+  {
+    "name": "login UI: actual imported username ahmd_1478 works",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "session UI: server expiry clears authenticated navigation",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Expired stored session routes back to sign-in and removes role navigation"
+  },
+  {
+    "name": "session UI: login succeeds after expiry",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "session UI: reload restores after fresh login",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": [
+      "<Response url='http://localhost:57920/' request=<Request url='http://localhost:57920/' method='GET'>>",
+      null,
+      null
+    ]
+  },
+  {
+    "name": "login UI: switching accounts cannot retain previous role tabs",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Student→doctor→student switching renders each correct role and clears prior scope"
+  },
+  {
+    "name": "browser UI: no uncaught application exceptions",
+    "layer": "Chrome",
+    "status": "PASS",
+    "detail": "Verified"
+  },
+  {
+    "name": "attendance history: percentage covers more than 100 sessions",
+    "layer": "API/Flutter calculation",
+    "status": "FAIL",
+    "detail": "API returns only 100 sessions; UI rate 100.0000%, complete history 99.0291% (103 eligible)"
+  }
+]
