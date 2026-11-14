@@ -160,12 +160,13 @@ def run_api(s):
 
     check('Questions: initially empty bank', 'API', lambda: verify(call('GET', '/courses/1/questions') == [], 'Unexpected seed question bank'))
     check('Questions: invalid correct option rejected', 'API', lambda: call('POST', '/courses/1/questions', json={
-        'prompt': 'Invalid', 'options': ['A', 'B'], 'correct_index': 4, 'points': '1'}, expected=422))
+        'prompt': 'Invalid', 'options': ['A', 'B'], 'correct_index': 4, 'points': '1', 'difficulty': 'easy'}, expected=422))
     check('Questions: blank option rejected', 'API', lambda: call('POST', '/courses/1/questions', json={
-        'prompt': 'Invalid', 'options': ['A', ' '], 'correct_index': 0, 'points': '1'}, expected=422))
+        'prompt': 'Invalid', 'options': ['A', ' '], 'correct_index': 0, 'points': '1', 'difficulty': 'easy'}, expected=422))
     for number in range(3):
         call('POST', '/courses/1/questions', json={'prompt': f'TA API question {number}',
-            'options': ['Correct', 'Wrong', 'Third', 'Fourth'], 'correct_index': 0, 'points': str(number + 1)})
+            'options': ['Correct', 'Wrong', 'Third', 'Fourth'], 'correct_index': 0, 'points': str(number + 1),
+            'difficulty': ('easy', 'medium', 'hard')[number]})
     check('Questions: bank persists options and answer keys for authorized TA', 'API', lambda: verify(
         len(call('GET', '/courses/1/questions')) == 3 and len(call('GET', '/courses/1/questions')[0]['options']) == 4,
         'Question bank content not persisted'))

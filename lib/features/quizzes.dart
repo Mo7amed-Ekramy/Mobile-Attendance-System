@@ -8,6 +8,39 @@ import '../data/models.dart';
 import '../widgets/common.dart';
 import 'grading.dart';
 
+const questionDifficultyLabels = {
+  'easy': 'سهل',
+  'medium': 'متوسط',
+  'hard': 'صعب',
+};
+
+Map<String, int> quizDifficultyCounts(int quantity) {
+  final weights = [2, 2, 1];
+  final counts = [for (final weight in weights) quantity * weight ~/ 5];
+  final remaining = quantity - counts.reduce((a, b) => a + b);
+  final order = [0, 1, 2]..sort((a, b) {
+      final remainder =
+          (quantity * weights[b] % 5).compareTo(quantity * weights[a] % 5);
+      return remainder == 0 ? a.compareTo(b) : remainder;
+    });
+  for (final index in order.take(remaining)) {
+    counts[index]++;
+  }
+  return Map.fromIterables(questionDifficultyLabels.keys, counts);
+}
+
+Map<String, int> questionBankCounts(List<Map<String, dynamic>> questions) => {
+      for (final level in questionDifficultyLabels.keys)
+        level: questions
+            .where((question) => question['difficulty'] == level)
+            .length,
+    };
+
+String difficultySummary(Map<String, dynamic> counts) =>
+    questionDifficultyLabels.entries
+        .map((level) => '${level.value}: ${counts[level.key] ?? 0}')
+        .join(' · ');
+
 String quizSummary(Map<String, dynamic> quiz, bool student) {
   if (quiz['state'] == 'cancelled') return 'ملغى';
   if (quiz['state'] == 'draft') return 'مسودة · لم تُفتح للطلاب';
@@ -130,7 +163,8 @@ class QuizzesPage extends StatelessWidget {
                         QuizCreatorPage(
                             state,
                             data['policy'] as Map<String, dynamic>,
-                            (data['questions'] as List).length));
+                            (data['questions'] as List)
+                                .cast<Map<String, dynamic>>()));
                     reload();
                   }),
           ],
@@ -158,18 +192,7 @@ class QuizzesPage extends StatelessWidget {
                               quiz['title'] as String,
                               student
                                   ? QuizRunnerPage(state.api, quiz['id'] as int)
-                                  : GradebookPage(
-                                      state.api,
-                                      state.course!,
-                                      {
-                                        'id': quiz['assessment_id'],
-                                        'title': quiz['title'],
-                                        'max_points': quiz['max_points']
-                                      },
-                                      sectionId:
-                                          quiz['course_section_id'] as int,
-                                      canPublish:
-                                          state.user!.role == Role.doctor));
+                                  : QuizResultsPage(state, quiz));
                           reload();
                         }),
               if (!student && quiz['state'] == 'draft')
@@ -242,39 +265,82 @@ class QuestionBankPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => RemotePage<dynamic>(
       load: () => api.getCourse(course, 'questions'),
-      builder: (questions, reload) => PageContent(children: [
-            const NoticeBanner(
-                'هذا البنك مشترك بين أعضاء تدريس المقرر. الأسئلة المضافة يمكن استخدامها في كويزات سكاشن المقرر.'),
-            AsyncButton(
-                label: 'إضافة سؤال',
-                icon: Icons.add,
-                onPressed: () async {
-                  await openPage(
-                      context, 'سؤال جديد', QuestionEditorPage(api, course));
-                  reload();
-                }),
-            if ((questions as List).isEmpty)
-              const EmptyPanel(
-                  'بنك الأسئلة فارغ', 'أضف أسئلة المقرر قبل إنشاء كويز.'),
-            for (final question in questions)
-              Card(
-                  child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(question['prompt'] as String,
-                                style: Theme.of(context).textTheme.titleMedium),
-                            Text('${points(question['points'])} درجة'),
-                            for (final option in question['options'] as List)
-                              ListTile(
-                                  contentPadding: EdgeInsets.zero,
-                                  leading: Icon(option['is_correct'] == true
-                                      ? Icons.check_circle_outline
-                                      : Icons.circle_outlined),
-                                  title: Text(option['text'] as String)),
-                          ]))),
-          ]));
+      builder: (questions, reload) {
+        final bank = (questions as List).cast<Map<String, dynamic>>();
+        final counts = questionBankCounts(bank);
+        final unclassified =
+            bank.length - counts.values.fold(0, (a, b) => a + b);
+        return PageContent(children: [
+          const NoticeBanner(
+              'أضف أي عدد من الأسئلة، وحدد الإجابة الصحيحة ومستوى كل سؤال. هذا البنك مشترك بين أعضاء تدريس المقرر.'),
+          Text('${bank.length} سؤال · ${difficultySummary(counts)}'),
+          if (unclassified > 0)
+            NoticeBanner(
+                'يوجد $unclassified سؤال دون مستوى. حدد مستواها لتتمكن من استخدامها في كويز جديد.',
+                isError: true),
+          AsyncButton(
+              label: 'إضافة سؤال',
+              icon: Icons.add,
+              onPressed: () async {
+                await openPage(
+                    context, 'سؤال جديد', QuestionEditorPage(api, course));
+                reload();
+              }),
+          if (bank.isEmpty)
+            const EmptyPanel(
+                'بنك الأسئلة فارغ', 'أضف أسئلة المقرر قبل إنشاء كويز.'),
+          for (final question in bank)
+            Card(
+                child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(question['prompt'] as String,
+                              style: Theme.of(context).textTheme.titleMedium),
+                          Text('${points(question['points'])} درجة'),
+                          DropdownButtonFormField<String>(
+                              key: ObjectKey(question),
+                              initialValue: question['difficulty'] as String?,
+                              decoration: const InputDecoration(
+                                  labelText: 'مستوى السؤال'),
+                              hint: const Text('حدد المستوى'),
+                              items: [
+                                for (final level
+                                    in questionDifficultyLabels.entries)
+                                  DropdownMenuItem(
+                                      value: level.key,
+                                      child: Text(level.value)),
+                              ],
+                              onChanged: (value) async {
+                                if (value == null ||
+                                    value == question['difficulty']) {
+                                  return;
+                                }
+                                try {
+                                  await api.writeCourse(
+                                      course,
+                                      'questions/${question['id']}/difficulty',
+                                      {'difficulty': value},
+                                      method: 'PATCH');
+                                  reload();
+                                } catch (error) {
+                                  reload();
+                                  if (context.mounted) {
+                                    notice(context, '$error');
+                                  }
+                                }
+                              }),
+                          for (final option in question['options'] as List)
+                            ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                leading: Icon(option['is_correct'] == true
+                                    ? Icons.check_circle_outline
+                                    : Icons.circle_outlined),
+                                title: Text(option['text'] as String)),
+                        ]))),
+        ]);
+      });
 }
 
 class QuestionEditorPage extends StatefulWidget {
@@ -289,7 +355,8 @@ class _QuestionEditorPageState extends State<QuestionEditorPage> {
   final prompt = TextEditingController();
   final options = List.generate(4, (_) => TextEditingController());
   final maximum = TextEditingController(text: '1');
-  int correct = 0;
+  int? correct;
+  String? difficulty;
   @override
   void dispose() {
     prompt.dispose();
@@ -318,6 +385,15 @@ class _QuestionEditorPageState extends State<QuestionEditorPage> {
                 DropdownMenuItem(value: i, child: Text('الاختيار ${i + 1}'))
             ],
             onChanged: (value) => correct = value!),
+        DropdownButtonFormField<String>(
+            initialValue: difficulty,
+            decoration: const InputDecoration(labelText: 'مستوى السؤال'),
+            hint: const Text('حدد المستوى'),
+            items: [
+              for (final level in questionDifficultyLabels.entries)
+                DropdownMenuItem(value: level.key, child: Text(level.value)),
+            ],
+            onChanged: (value) => difficulty = value),
         TextField(
             controller: maximum,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -329,10 +405,14 @@ class _QuestionEditorPageState extends State<QuestionEditorPage> {
                   options.any((o) => o.text.trim().isEmpty)) {
                 throw const ApiException('اكتب السؤال وجميع الاختيارات.');
               }
+              if (correct == null || difficulty == null) {
+                throw const ApiException('حدد الإجابة الصحيحة ومستوى السؤال.');
+              }
               await widget.api.writeCourse(widget.course, 'questions', {
                 'prompt': prompt.text.trim(),
                 'options': options.map((o) => o.text.trim()).toList(),
                 'correct_index': correct,
+                'difficulty': difficulty,
                 'points': maximum.text
               });
               if (context.mounted) Navigator.pop(context, true);
@@ -341,11 +421,10 @@ class _QuestionEditorPageState extends State<QuestionEditorPage> {
 }
 
 class QuizCreatorPage extends StatefulWidget {
-  const QuizCreatorPage(this.state, this.policy, this.questionCount,
-      {super.key});
+  const QuizCreatorPage(this.state, this.policy, this.questions, {super.key});
   final AppState state;
   final Map<String, dynamic> policy;
-  final int questionCount;
+  final List<Map<String, dynamic>> questions;
   @override
   State<QuizCreatorPage> createState() => _QuizCreatorPageState();
 }
@@ -357,6 +436,17 @@ class _QuizCreatorPageState extends State<QuizCreatorPage> {
   int? section, category;
   String launchMode = 'now';
   DateTime? scheduledStart;
+  Map<String, int> get available => questionBankCounts(widget.questions);
+  int? get quantity => int.tryParse(count.text.trim());
+  bool get validQuantity =>
+      quantity != null && quantity! >= 1 && quantity! <= 100;
+  Map<String, int> get distribution =>
+      quizDifficultyCounts(validQuantity ? quantity! : 0);
+  List<String> get shortages => [
+        for (final level in questionDifficultyLabels.entries)
+          if (available[level.key]! < distribution[level.key]!)
+            '${level.value}: مطلوب ${distribution[level.key]}، متاح ${available[level.key]}',
+      ];
   @override
   void initState() {
     super.initState();
@@ -374,7 +464,7 @@ class _QuizCreatorPageState extends State<QuizCreatorPage> {
   @override
   Widget build(BuildContext context) => PageContent(children: [
         const PageHeading('كويز جديد',
-            'اختر السكشن وعدد الأسئلة. يختار النظام الأسئلة عشوائيًا من بنك المقرر ويحفظ نسختها عند إنشاء الكويز.'),
+            'اختر السكشن وعدد الأسئلة. التوزيع 40% سهل، 40% متوسط، 20% صعب، مع التقريب لأقرب توزيع بأعداد صحيحة. يتلقى طلاب السكشن الأسئلة نفسها بترتيب مختلف للأسئلة والاختيارات.'),
         TextField(
             controller: title,
             decoration: const InputDecoration(labelText: 'عنوان الكويز')),
@@ -399,9 +489,21 @@ class _QuizCreatorPageState extends State<QuizCreatorPage> {
             onChanged: (value) => category = value),
         TextField(
             controller: count,
+            onChanged: (_) => setState(() {}),
             keyboardType: TextInputType.number,
             decoration: InputDecoration(
-                labelText: 'عدد الأسئلة، متاح ${widget.questionCount}')),
+                labelText:
+                    'عدد الأسئلة (1–100)، البنك ${widget.questions.length} سؤال')),
+        Text('المتاح في البنك · ${difficultySummary(available)}'),
+        if (validQuantity) ...[
+          Text('توزيع الكويز · ${difficultySummary(distribution)}',
+              style: Theme.of(context).textTheme.titleMedium),
+          if (shortages.isNotEmpty)
+            NoticeBanner(
+                'أضف أو صنف أسئلة قبل إنشاء الكويز.\n${shortages.join('\n')}',
+                isError: true),
+        ] else
+          const NoticeBanner('اختر عددًا من 1 إلى 100 سؤال.', isError: true),
         TextField(
             controller: duration,
             keyboardType: TextInputType.number,
@@ -454,6 +556,7 @@ class _QuizCreatorPageState extends State<QuizCreatorPage> {
                     ? 'جدولة الكويز'
                     : 'فتح الكويز وإشعار الطلاب',
             icon: Icons.send,
+            enabled: validQuantity && shortages.isEmpty,
             onPressed: () async {
               final quantity = int.tryParse(count.text);
               final minutes = int.tryParse(duration.text);
@@ -462,7 +565,8 @@ class _QuizCreatorPageState extends State<QuizCreatorPage> {
                   category == null ||
                   quantity == null ||
                   quantity < 1 ||
-                  quantity > widget.questionCount ||
+                  quantity > 100 ||
+                  shortages.isNotEmpty ||
                   minutes == null ||
                   minutes < 1 ||
                   minutes > 120) {
@@ -488,6 +592,101 @@ class _QuizCreatorPageState extends State<QuizCreatorPage> {
               if (context.mounted) Navigator.pop(context, true);
             }),
       ]);
+}
+
+class QuizResultsPage extends StatefulWidget {
+  const QuizResultsPage(this.state, this.quiz, {super.key});
+  final AppState state;
+  final Map<String, dynamic> quiz;
+  @override
+  State<QuizResultsPage> createState() => _QuizResultsPageState();
+}
+
+class _QuizResultsPageState extends State<QuizResultsPage> {
+  int offset = 0;
+  static const statusLabels = {
+    'not_started': 'لم يبدأ',
+    'in_progress': 'يحل الآن',
+    'submitted': 'تم التسليم',
+    'timed_out': 'انتهى الوقت',
+  };
+
+  @override
+  Widget build(BuildContext context) => RemotePage<dynamic>(
+      scope: '${widget.state.scopeKey}-$offset',
+      refreshInterval: const Duration(seconds: 10),
+      load: () => widget.state.api.getCourse(
+          widget.state.course!, 'quizzes/${widget.quiz['id']}/results',
+          query: {'offset': offset, 'limit': 50}),
+      builder: (data, reload) {
+        final summary = data['summary'] as Map<String, dynamic>;
+        final rows = data['rows'] as List;
+        final total = summary['total'] as int;
+        return PageContent(children: [
+          PageHeading(data['title'] as String,
+              'سكشن ${data['section_number']} (${data['department_code']}) · ${points(data['max_points'])} درجة'),
+          Text(
+              'توزيع الأسئلة · ${difficultySummary(data['difficulty_counts'] as Map<String, dynamic>)}'),
+          const NoticeBanner(
+              'يُصحح الكويز وتُحفظ النتائج تلقائياً. يتحدث الكشف كل 10 ثوانٍ.'),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final status in statusLabels.entries)
+              Chip(label: Text('${status.value}: ${summary[status.key]}')),
+          ]),
+          OutlinedButton.icon(
+              icon: const Icon(Icons.edit_note),
+              label: const Text('كشف الدرجات'),
+              onPressed: () async {
+                await openPage(
+                    context,
+                    'كشف الدرجات',
+                    GradebookPage(
+                        widget.state.api,
+                        widget.state.course!,
+                        {
+                          'id': widget.quiz['assessment_id'],
+                          'title': data['title'],
+                          'max_points': data['max_points'],
+                        },
+                        sectionId: widget.quiz['course_section_id'] as int,
+                        canPublish: widget.state.user!.role == Role.doctor));
+                reload();
+              }),
+          if (rows.isEmpty)
+            const EmptyPanel(
+                'لا يوجد طلاب', 'لا يوجد طلاب مسجلون في هذا السكشن.'),
+          for (final row in rows)
+            Card(
+                child: ListTile(
+              leading: Icon(row['attempt_state'] == 'submitted' ||
+                      row['attempt_state'] == 'timed_out'
+                  ? Icons.fact_check_outlined
+                  : Icons.person_outline),
+              title: Text(row['full_name'] as String),
+              subtitle: Text(
+                  '${row['university_id']} · ${statusLabels[row['attempt_state']]}'),
+              trailing: Text(row['score'] == null
+                  ? '—'
+                  : pointRatio(row['score'], data['max_points'])),
+            )),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            Text(total == 0
+                ? '0 طالب'
+                : '${offset + 1}–${offset + rows.length} من $total'),
+            IconButton(
+                tooltip: 'السابق',
+                icon: const Icon(Icons.chevron_left),
+                onPressed:
+                    offset == 0 ? null : () => setState(() => offset -= 50)),
+            IconButton(
+                tooltip: 'التالي',
+                icon: const Icon(Icons.chevron_right),
+                onPressed: offset + rows.length >= total
+                    ? null
+                    : () => setState(() => offset += 50)),
+          ]),
+        ]);
+      });
 }
 
 class QuizRunnerPage extends StatefulWidget {

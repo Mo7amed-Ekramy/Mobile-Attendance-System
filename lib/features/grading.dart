@@ -649,6 +649,8 @@ class _GradebookPageState extends State<GradebookPage> {
       },
       child: RemotePage<dynamic>(
           beforeRefresh: _confirmDiscard,
+          refreshInterval: const Duration(seconds: 10),
+          canAutoRefresh: () => !saving && !conflicted && !_hasUnsaved,
           scope: '$offset',
           load: () => widget.api.getCourse(
               widget.course, 'assessments/${widget.assessment['id']}/results',

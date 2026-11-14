@@ -2,12 +2,14 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import random
 import secrets
+from typing import Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 
 from core import audit, authorize_offering, enrollment, fail, money, notify, principal
 from grading import AssessmentDraft, create_assessment
+from quiz_balance import DIFFICULTIES, DIFFICULTY_LABELS, difficulty_counts
 
 router = APIRouter()
 
@@ -47,6 +49,7 @@ class QuestionDraft(BaseModel):
     prompt: str = Field(min_length=1, max_length=3000)
     options: list[str] = Field(min_length=2, max_length=6)
     correct_index: int = Field(ge=0)
+    difficulty: Literal['easy', 'medium', 'hard']
     points: Decimal = Field(default=Decimal(1), gt=0, le=100, max_digits=9, decimal_places=2, allow_inf_nan=False)
 
 
@@ -54,7 +57,7 @@ class QuestionDraft(BaseModel):
 def questions(offering_id: int, request: Request, user=Depends(principal)):
     with request.app.state.db.transaction() as db:
         authorize_offering(db, user, offering_id, staff=True)
-        rows = db.execute('SELECT id,prompt,points FROM questions WHERE offering_id=%s ORDER BY id', (offering_id,)).fetchall()
+        rows = db.execute('SELECT id,prompt,points,difficulty FROM questions WHERE offering_id=%s ORDER BY id', (offering_id,)).fetchall()
         for row in rows:
             row['options'] = db.execute('SELECT id,text,is_correct FROM question_options WHERE question_id=%s ORDER BY position', (row['id'],)).fetchall()
         return rows
@@ -62,18 +65,36 @@ def questions(offering_id: int, request: Request, user=Depends(principal)):
 
 @router.post('/courses/{offering_id}/questions')
 def add_question(offering_id: int, body: QuestionDraft, request: Request, user=Depends(principal)):
-    if body.correct_index >= len(body.options) or any(not option.strip() for option in body.options):
+    if not body.prompt.strip() or body.correct_index >= len(body.options) or any(not option.strip() for option in body.options):
         fail(422, 'اكتب جميع الاختيارات وحدد الإجابة الصحيحة.')
     with request.app.state.db.transaction() as db:
         authorize_offering(db, user, offering_id, staff=True)
         bank = db.execute('SELECT id FROM question_banks WHERE offering_id=%s ORDER BY id LIMIT 1', (offering_id,)).fetchone()
         if not bank:
             bank = db.execute('INSERT INTO question_banks(offering_id,title,created_by) VALUES (%s,%s,%s) RETURNING id', (offering_id, 'بنك أسئلة المقرر', user['id'])).fetchone()
-        question_id = db.execute('INSERT INTO questions(bank_id,offering_id,prompt,points) VALUES (%s,%s,%s,%s) RETURNING id', (bank['id'], offering_id, body.prompt.strip(), body.points)).fetchone()['id']
+        question_id = db.execute('INSERT INTO questions(bank_id,offering_id,prompt,points,difficulty) VALUES (%s,%s,%s,%s,%s) RETURNING id', (bank['id'], offering_id, body.prompt.strip(), body.points, body.difficulty)).fetchone()['id']
         for position, text in enumerate(body.options):
             db.execute('INSERT INTO question_options(question_id,position,text,is_correct) VALUES (%s,%s,%s,%s)', (question_id, position, text.strip(), position == body.correct_index))
         audit(db, user, offering_id, 'question.create', 'question', question_id)
         return {'id': question_id}
+
+
+class QuestionDifficulty(BaseModel):
+    difficulty: Literal['easy', 'medium', 'hard']
+
+
+@router.patch('/courses/{offering_id}/questions/{question_id}/difficulty')
+def classify_question(offering_id: int, question_id: int, body: QuestionDifficulty, request: Request, user=Depends(principal)):
+    with request.app.state.db.transaction() as db:
+        authorize_offering(db, user, offering_id, staff=True)
+        question = db.execute('SELECT difficulty FROM questions WHERE id=%s AND offering_id=%s FOR UPDATE',
+                              (question_id, offering_id)).fetchone()
+        if not question:
+            fail(404, 'السؤال غير موجود في بنك هذا المقرر.')
+        db.execute('UPDATE questions SET difficulty=%s WHERE id=%s', (body.difficulty, question_id))
+        audit(db, user, offering_id, 'question.classify', 'question', question_id,
+              before=question, after={'difficulty': body.difficulty})
+        return {'id': question_id, 'difficulty': body.difficulty}
 
 
 class QuizDraft(BaseModel):
@@ -96,23 +117,64 @@ def create_quiz(offering_id: int, body: QuizDraft, request: Request, user=Depend
     with request.app.state.db.transaction() as db:
         authorize_offering(db, user, offering_id, body.section_id, staff=True)
         pool = db.execute('SELECT * FROM questions WHERE offering_id=%s ORDER BY id', (offering_id,)).fetchall()
-        if body.question_count > len(pool):
-            fail(422, 'عدد الأسئلة المطلوبة أكبر من بنك الأسئلة.')
-        selected = secrets.SystemRandom().sample(pool, body.question_count)
+        required = difficulty_counts(body.question_count)
+        pools = {level: [q for q in pool if q['difficulty'] == level] for level in DIFFICULTIES}
+        shortages = [f"{DIFFICULTY_LABELS[level]}: مطلوب {required[level]}، متاح {len(pools[level])}"
+                     for level in DIFFICULTIES if len(pools[level]) < required[level]]
+        if shortages:
+            fail(422, 'بنك الأسئلة لا يكفي لتوزيع الكويز (40% سهل، 40% متوسط، 20% صعب). ' + '؛ '.join(shortages))
+        randomizer = secrets.SystemRandom()
+        selected = [question for level in DIFFICULTIES
+                    for question in randomizer.sample(pools[level], required[level])]
+        randomizer.shuffle(selected)
         assessment = create_assessment(db, user, offering_id, AssessmentDraft(section_id=body.section_id, category_id=body.category_id, title=body.title, kind='quiz', max_points=sum(q['points'] for q in selected)))
         quiz = db.execute('''INSERT INTO quizzes(assessment_id,offering_id,course_section_id,duration_minutes,starts_at,ends_at,state)
             VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING *''',
             (assessment['id'], offering_id, body.section_id, body.duration_minutes, starts,
              starts + timedelta(minutes=body.duration_minutes), state)).fetchone()
         for position, question in enumerate(selected):
-            snapshot_id = db.execute('INSERT INTO quiz_questions(quiz_id,offering_id,source_question_id,prompt,points,position) VALUES (%s,%s,%s,%s,%s,%s) RETURNING id',
-                (quiz['id'], offering_id, question['id'], question['prompt'], question['points'], position)).fetchone()['id']
+            snapshot_id = db.execute('INSERT INTO quiz_questions(quiz_id,offering_id,source_question_id,prompt,points,difficulty,position) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id',
+                (quiz['id'], offering_id, question['id'], question['prompt'], question['points'], question['difficulty'], position)).fetchone()['id']
             db.execute('INSERT INTO quiz_options(quiz_question_id,text,is_correct,position) SELECT %s,text,is_correct,position FROM question_options WHERE question_id=%s', (snapshot_id, question['id']))
         if state != 'draft':
             notify_quiz(db, quiz, 'quiz_scheduled' if state == 'scheduled' else 'quiz_open',
                         'كويز مجدول للسكشن' if state == 'scheduled' else 'كويز جديد للسكشن', body.title)
         audit(db, user, offering_id, 'quiz.' + state, 'quiz', quiz['id'], after=body.model_dump())
         return quiz
+
+
+@router.get('/courses/{offering_id}/quizzes/{quiz_id}/results')
+def quiz_results(offering_id: int, quiz_id: int, request: Request,
+                 offset: int = Query(default=0, ge=0), limit: int = Query(default=50, ge=1, le=100),
+                 user=Depends(principal)):
+    with request.app.state.db.transaction() as db:
+        quiz = staff_quiz(db, user, offering_id, quiz_id)
+        advance_quiz_lifecycle(db, offering_id)
+        context = db.execute('''SELECT a.title,a.max_points,q.state,ds.number AS section_number,
+            d.code AS department_code FROM quizzes q JOIN assessments a ON a.id=q.assessment_id
+            JOIN course_sections cs ON cs.id=q.course_section_id
+            JOIN department_sections ds ON ds.id=cs.department_section_id
+            JOIN departments d ON d.id=cs.department_id WHERE q.id=%s''', (quiz_id,)).fetchone()
+        summary = db.execute('''SELECT count(*) AS total,
+            count(*) FILTER (WHERE t.id IS NULL) AS not_started,
+            count(*) FILTER (WHERE t.state='in_progress') AS in_progress,
+            count(*) FILTER (WHERE t.state='submitted') AS submitted,
+            count(*) FILTER (WHERE t.state='timed_out') AS timed_out
+            FROM enrollments e LEFT JOIN quiz_attempts t ON t.enrollment_id=e.id AND t.quiz_id=%s
+            WHERE e.course_section_id=%s AND e.state='active' ''', (quiz_id, quiz['course_section_id'])).fetchone()
+        rows = db.execute('''SELECT e.id AS enrollment_id,u.full_name,s.university_id,
+            COALESCE(t.state,'not_started') AS attempt_state,t.score,t.started_at,t.submitted_at
+            FROM enrollments e JOIN students s ON s.id=e.student_id JOIN app_users u ON u.id=s.user_id
+            LEFT JOIN quiz_attempts t ON t.enrollment_id=e.id AND t.quiz_id=%s
+            WHERE e.course_section_id=%s AND e.state='active'
+            ORDER BY u.full_name,e.id LIMIT %s OFFSET %s''', (quiz_id, quiz['course_section_id'], limit, offset)).fetchall()
+        levels = db.execute('SELECT difficulty,count(*) AS count FROM quiz_questions WHERE quiz_id=%s GROUP BY difficulty',
+                            (quiz_id,)).fetchall()
+        for row in rows:
+            row['score'] = money(row['score'])
+        context['max_points'] = money(context['max_points'])
+        return dict(context) | {'summary': summary, 'rows': rows, 'offset': offset, 'limit': limit,
+                                'difficulty_counts': {row['difficulty'] or 'unclassified': row['count'] for row in levels}}
 
 
 def notify_quiz(db, quiz, kind, title, message):
@@ -310,6 +372,7 @@ def attempt_payload(db, quiz, attempt):
         options = db.execute('SELECT id,text FROM quiz_options WHERE quiz_question_id=%s ORDER BY position', (question['id'],)).fetchall()
         randomizer.shuffle(options)
         question['options'] = options
+    randomizer.shuffle(questions)
     answers = db.execute('SELECT quiz_question_id AS question_id,selected_option_id AS option_id FROM quiz_answers WHERE attempt_id=%s', (attempt['id'],)).fetchall()
     published = db.execute('''SELECT p.score FROM published_results p JOIN assessment_results r ON r.id=p.result_id
         WHERE r.assessment_id=%s AND r.enrollment_id=%s''', (quiz['assessment_id'], attempt['enrollment_id'])).fetchone()

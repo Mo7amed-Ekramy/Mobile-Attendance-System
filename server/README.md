@@ -20,7 +20,7 @@ first, then apply API migrations and provision authentication:
 ~~~
 
 Setup reads administrator credentials from ignored database/.env. It applies
-migrations 004, 005 and 006, initializes only missing account password hashes, creates
+migrations 004 through 007, initializes only missing account password hashes, creates
 the restricted university_attendance_api login, and writes generated connection
 credentials to ignored server/.env. Re-running setup preserves existing hashes
 and does not seed operational records.
@@ -80,6 +80,18 @@ current revisions. Corrections require reasons; previous published snapshots
 stay visible until republication. Section assessments apply to that section only.
 
 Question banks and quiz question/option snapshots persist in PostgreSQL.
+Every new question requires a marked correct answer and an easy/medium/hard
+difficulty. Existing bank questions remain unclassified until staff label them
+in the bank. Quiz creation draws without replacement using 40% easy, 40% medium,
+20% hard. Whole-question rounding uses largest remainders, with ties favoring
+easy, then medium, then hard (5 questions = 2/2/1, 10 = 4/4/2, 3 = 1/1/1).
+Insufficient questions at any level reject creation before writing an assessment;
+the distribution is never silently changed. Difficulty is copied into each quiz
+snapshot, so later bank classification cannot change an existing quiz.
+Section students receive the same pool with questions and answer choices shuffled
+per attempt; order stays stable when reopening or autosaving. Staff can read the
+paginated `GET /courses/{id}/quizzes/{quiz_id}/results` roster with attempt status
+and automatic scores. The roster refreshes every 10 seconds in Flutter.
 Student responses exclude answer keys. Deadlines and scores are server-controlled.
 Results appear after instructor publication. Notifications are in-app;
 external push/email delivery is not configured.
@@ -98,7 +110,7 @@ See [priority changes and QR verification](../docs/PRIORITY_WORKFLOW_UPDATE.md).
 dart run tool/verify_api.dart
 ~~~
 
-The nineteen integration journeys create a unique attendance_api_test_* database,
+The integration journeys create a unique attendance_api_test_* database,
 apply seed/migrations there, and drop that exact database afterward. They require
 administrator settings and the provisioned API role. They never truncate or add
 workflow fixtures to university_attendance.

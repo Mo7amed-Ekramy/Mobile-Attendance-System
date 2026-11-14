@@ -47,7 +47,7 @@ def seed(sandbox):
             {'code': 'quiz', 'name': 'الكويزات', 'kind': 'assessment', 'max_points': '80', 'allocation_mode': 'normalized'},
         ]})
     sandbox.call('POST', '/courses/1/questions', json={
-        'prompt': 'ما الهدف من اختبار البرمجيات؟', 'options': ['اكتشاف الأخطاء', 'زيادة الأخطاء'], 'correct_index': 0, 'points': '5'})
+        'prompt': 'ما الهدف من اختبار البرمجيات؟', 'options': ['اكتشاف الأخطاء', 'زيادة الأخطاء'], 'correct_index': 0, 'points': '5', 'difficulty': 'easy'})
     sandbox.call('POST', '/courses/1/quizzes', json={
         'title': 'كويز المراجعة', 'section_id': 1, 'category_id': policy['categories'][2]['id'],
         'question_count': 1, 'duration_minutes': 20})

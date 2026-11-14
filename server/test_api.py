@@ -19,6 +19,7 @@ from manage import connection_env
 from app import create_app
 from db import Database, connection_info, settings
 from security import hash_password
+from quiz_balance import difficulty_counts
 
 
 class ApiJourneys(unittest.TestCase):
@@ -31,7 +32,7 @@ class ApiJourneys(unittest.TestCase):
             admin.execute(sql.SQL('CREATE DATABASE {} TEMPLATE template0 ENCODING \'UTF8\'').format(sql.Identifier(cls.name)))
         try:
             with psycopg.connect(connection_info(cls.test_config), autocommit=True, row_factory=dict_row) as db:
-                for file in ('001_schema.sql', '002_seed.sql', '004_api_schema.sql', '005_assessment_scope.sql', '006_workflow_completion.sql'):
+                for file in ('001_schema.sql', '002_seed.sql', '004_api_schema.sql', '005_assessment_scope.sql', '006_workflow_completion.sql', '007_quiz_difficulty.sql'):
                     db.execute((HERE.parent / 'database' / file).read_text(encoding='utf-8'))
                 cls.student = db.execute('''SELECT u.username,s.university_id,s.id AS student_id,s.user_id,e.id AS enrollment_id
                     FROM students s JOIN app_users u ON u.id=s.user_id JOIN enrollments e ON e.student_id=s.id
@@ -266,8 +267,8 @@ class ApiJourneys(unittest.TestCase):
 
     def create_live_quiz(self):
         value = self.policy()
-        for point in (2, 3):
-            self.call('POST', '/courses/1/questions', self.ta, {'prompt': f'Question {point}', 'options': ['Correct', 'Wrong'], 'correct_index': 0, 'points': str(point)})
+        for point, level in ((2, 'easy'), (3, 'medium')):
+            self.call('POST', '/courses/1/questions', self.ta, {'prompt': f'Question {point}', 'options': ['Correct', 'Wrong'], 'correct_index': 0, 'points': str(point), 'difficulty': level})
         quiz = self.call('POST', '/courses/1/quizzes', self.ta, {'title': 'Live quiz', 'section_id': 1, 'category_id': value['categories'][0]['id'], 'question_count': 2, 'duration_minutes': 20})
         self.call('POST', '/courses/1/policy/publish')
         return quiz
@@ -294,6 +295,122 @@ class ApiJourneys(unittest.TestCase):
         self.call('POST', f"/courses/1/quizzes/{quiz['id']}/close")
         self.call('POST', f"/courses/1/assessments/{quiz['assessment_id']}/publish")
         self.assertEqual(self.call('POST', f"/quizzes/{quiz['id']}/start", self.learner)['score'], '5.00')
+
+    def test_question_difficulty_is_required_and_legacy_questions_can_be_classified(self):
+        body = {'prompt': 'Bank question', 'options': ['Correct', 'Wrong'], 'correct_index': 0}
+        self.call('POST', '/courses/1/questions', self.ta, body, status=422)
+        self.call('POST', '/courses/1/questions', self.ta, body | {'difficulty': 'unknown'}, status=422)
+        self.call('POST', '/courses/1/questions', self.ta, body | {'difficulty': 'easy', 'correct_index': 2}, status=422)
+        self.call('POST', '/courses/1/questions', self.ta, body | {'difficulty': 'easy', 'prompt': '   '}, status=422)
+        question = self.call('POST', '/courses/1/questions', self.ta, body | {'difficulty': 'easy'})
+        self.query('UPDATE questions SET difficulty=NULL WHERE id=%s', (question['id'],))
+        self.assertIsNone(self.call('GET', '/courses/1/questions', self.ta)[0]['difficulty'])
+        category = self.policy()['categories'][0]['id']
+        draft = {'title': 'Balanced', 'section_id': 1, 'category_id': category, 'question_count': 1, 'duration_minutes': 20}
+        self.call('POST', '/courses/1/quizzes', self.ta, draft, status=422)
+        self.assertFalse(self.query('SELECT 1 FROM assessments'))
+        path = f"/courses/1/questions/{question['id']}/difficulty"
+        self.call('PATCH', path, self.learner, {'difficulty': 'easy'}, status=403)
+        self.call('PATCH', path, self.ta, {'difficulty': 'unknown'}, status=422)
+        self.call('PATCH', f"/courses/2/questions/{question['id']}/difficulty", self.ta, {'difficulty': 'easy'}, status=403)
+        self.call('PATCH', '/courses/1/questions/999999/difficulty', self.ta, {'difficulty': 'easy'}, status=404)
+        self.call('PATCH', path, self.ta, {'difficulty': 'easy'})
+        quiz = self.call('POST', '/courses/1/quizzes', self.ta, draft)
+        self.call('PATCH', path, self.ta, {'difficulty': 'hard'})
+        self.assertEqual(self.query('SELECT difficulty FROM quiz_questions WHERE quiz_id=%s', (quiz['id'],))[0]['difficulty'], 'easy')
+        self.assertTrue(self.query("SELECT 1 FROM audit_events WHERE action='question.classify'"))
+
+    def test_balanced_quiz_selection_is_exact_unique_and_rejects_shortages(self):
+        category = self.policy()['categories'][0]['id']
+        for level in ('easy', 'medium', 'hard'):
+            for index in range(6):
+                self.call('POST', '/courses/1/questions', self.ta, {
+                    'prompt': f'{level} {index}', 'options': ['Correct', 'Wrong'],
+                    'correct_index': 0, 'difficulty': level})
+        draft = {'title': 'Balanced', 'section_id': 1, 'category_id': category, 'duration_minutes': 20}
+        for quantity in (1, 2, 3, 4, 5, 6, 7, 10):
+            quiz = self.call('POST', '/courses/1/quizzes', self.ta, draft | {'question_count': quantity})
+            snapshots = self.query('SELECT source_question_id,difficulty FROM quiz_questions WHERE quiz_id=%s', (quiz['id'],))
+            self.assertEqual(len({q['source_question_id'] for q in snapshots}), quantity)
+            self.assertEqual({level: sum(q['difficulty'] == level for q in snapshots)
+                              for level in ('easy', 'medium', 'hard')}, difficulty_counts(quantity))
+        # The total bank is large enough, but the easy/medium pools cannot supply eight each.
+        before = len(self.query('SELECT id FROM assessments'))
+        response = self.call('POST', '/courses/1/quizzes', self.ta, draft | {'question_count': 18}, status=422)
+        self.assertIn('متاح 6', response['detail'])
+        self.assertEqual(len(self.query('SELECT id FROM assessments')), before)
+
+    def test_section_quiz_shuffles_stably_notifies_and_shows_automatic_results_to_ta(self):
+        category = self.policy()['categories'][0]['id']
+        for level in ('easy', 'medium', 'hard'):
+            for index in range(5):
+                self.call('POST', '/courses/1/questions', self.ta, {
+                    'prompt': f'{level} {index}', 'options': ['Correct', 'Wrong', 'Third', 'Fourth'],
+                    'correct_index': 0, 'difficulty': level})
+        quiz = self.call('POST', '/courses/1/quizzes', self.ta, {
+            'title': 'Section quiz', 'section_id': 1, 'category_id': category,
+            'question_count': 10, 'duration_minutes': 20})
+        path = f"/quizzes/{quiz['id']}"
+        results_path = f"/courses/1/quizzes/{quiz['id']}/results"
+        peer = self.login(self.peer['username'], self.peer['university_id'])
+        outside = self.login(self.outside['username'], self.outside['university_id'])
+        self.assertEqual(self.call('GET', '/courses/1/quizzes', outside), [])
+        self.assertEqual(self.call('GET', '/notifications', outside), [])
+        self.assertTrue(self.call('GET', '/notifications', self.learner))
+        self.assertTrue(self.call('GET', '/notifications', peer))
+        self.call('GET', results_path, self.learner, status=403)
+        self.call('GET', results_path + '?offset=-1', self.ta, status=422)
+        self.call('POST', path + '/start', outside, status=403)
+        first = self.call('POST', path + '/start', self.learner)
+        second = self.call('POST', path + '/start', peer)
+        ids = lambda attempt: [q['id'] for q in attempt['questions']]
+        options = lambda attempt: {q['id']: [o['id'] for o in q['options']] for q in attempt['questions']}
+        self.assertEqual(set(ids(first)), set(ids(second)))
+        self.assertNotEqual(ids(first), ids(second))
+        self.assertTrue(any(options(first)[id] != options(second)[id] for id in ids(first)))
+        restored = self.call('POST', path + '/start', self.learner)
+        self.assertEqual(ids(first), ids(restored))
+        self.assertEqual(options(first), options(restored))
+        self.assertNotIn('is_correct', str(first))
+        self.assertNotIn('difficulty', str(first))
+        answers = self.query('''SELECT q.id AS question_id,o.id AS option_id FROM quiz_questions q
+            JOIN quiz_options o ON o.quiz_question_id=q.id WHERE q.quiz_id=%s AND o.is_correct''', (quiz['id'],))
+        before = self.call('GET', results_path, self.ta)
+        self.assertEqual(before['summary']['in_progress'], 2)
+        submitted = self.call('POST', path + '/submit', self.learner, {'answers': answers})
+        self.assertIsNone(submitted['score'])
+        book_path = f"/courses/1/assessments/{quiz['assessment_id']}/results"
+        book = self.call('GET', book_path, self.ta)
+        recorded = next(row for row in book['rows'] if row['enrollment_id'] == self.student['enrollment_id'])
+        self.assertEqual((recorded['score'], recorded['state'], recorded['revision']), ('10.00', 'recorded', 1))
+        self.assertFalse(book['editable'])
+        self.call('POST', path + '/submit', self.learner, {'answers': []})
+        repeated = self.call('GET', book_path, self.ta)
+        recorded_again = next(row for row in repeated['rows'] if row['enrollment_id'] == self.student['enrollment_id'])
+        self.assertEqual((recorded_again['score'], recorded_again['revision']), ('10.00', 1))
+        self.call('PATCH', path + '/answers', peer, {'answers': answers[:1]})
+        self.query("UPDATE quiz_attempts SET started_at=now()-interval '2 minutes',deadline_at=now()-interval '1 second' WHERE id=%s", (second['id'],))
+        after = self.call('GET', results_path, self.ta)
+        by_enrollment = {row['enrollment_id']: row for row in after['rows']}
+        self.assertEqual((by_enrollment[self.student['enrollment_id']]['attempt_state'],
+                          by_enrollment[self.student['enrollment_id']]['score']), ('submitted', '10.00'))
+        self.assertEqual((by_enrollment[self.peer['enrollment_id']]['attempt_state'],
+                          by_enrollment[self.peer['enrollment_id']]['score']), ('timed_out', '1.00'))
+        self.assertNotIn(self.outside['enrollment_id'], by_enrollment)
+        self.assertEqual(after['summary']['not_started'], after['summary']['total'] - 2)
+        self.assertEqual(after['difficulty_counts'], {'easy': 4, 'medium': 4, 'hard': 2})
+        self.assertEqual(self.query('SELECT score FROM assessment_results WHERE assessment_id=%s AND enrollment_id=%s',
+                                   (quiz['assessment_id'], self.student['enrollment_id']))[0]['score'], 10)
+        paged = self.call('GET', results_path + '?offset=1&limit=1', self.ta)
+        self.assertEqual(len(paged['rows']), 1)
+        self.assertEqual(paged['summary'], after['summary'])
+        self.call('POST', '/auth/logout', self.ta)
+        ta = self.login('ta_nehad00', 'TA@123')
+        self.assertEqual(self.call('GET', results_path, ta)['rows'], after['rows'])
+        other = self.call('POST', '/courses/1/quizzes', self.doctor, {
+            'title': 'Other section', 'section_id': 2, 'category_id': category,
+            'question_count': 5, 'duration_minutes': 20})
+        self.call('GET', f"/courses/1/quizzes/{other['id']}/results", ta, status=403)
 
     def test_late_quiz_submission_scores_only_autosaved_answers(self):
         quiz = self.create_live_quiz()
@@ -438,7 +555,7 @@ class ApiJourneys(unittest.TestCase):
         self.policy(points='1')
         category = self.call('GET', '/courses/1/policy')['categories'][0]['id']
         self.call('POST', '/courses/1/questions', self.ta,
-            {'prompt': 'Scheduled?', 'options': ['Yes', 'No'], 'correct_index': 0})
+            {'prompt': 'Scheduled?', 'options': ['Yes', 'No'], 'correct_index': 0, 'difficulty': 'easy'})
         future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
         draft = {'title': 'Prepared', 'section_id': 1, 'category_id': category,
                  'question_count': 1, 'duration_minutes': 20, 'prepare_only': True}

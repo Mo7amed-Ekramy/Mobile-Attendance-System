@@ -146,14 +146,26 @@ void main() {
     for (var i = 0; i < inputs.length; i++) {
       await tester.enterText(find.byType(TextField).at(i), inputs[i]);
     }
+    await tester.tap(find.text('حفظ السؤال'));
+    await tester.pumpAndSettle();
+    expect(submitted, isNull);
+    expect(find.text('حدد الإجابة الصحيحة ومستوى السؤال.'), findsOneWidget);
     await tester.tap(find.byType(DropdownButtonFormField<int>));
     await tester.pumpAndSettle();
     await tester.tap(find.text('الاختيار 2').last);
     await tester.pumpAndSettle();
     await tester.tap(find.text('حفظ السؤال'));
     await tester.pumpAndSettle();
+    expect(submitted, isNull);
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('متوسط').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('حفظ السؤال'));
+    await tester.pumpAndSettle();
     expect(submitted, containsPair('options', ['A', 'B', 'C', 'D']));
     expect(submitted, containsPair('correct_index', 1));
+    expect(submitted, containsPair('difficulty', 'medium'));
     expect(submitted, containsPair('points', '2'));
   });
 
@@ -179,7 +191,13 @@ void main() {
       ..course = selected
       ..section = selected.sections.first;
     addTearDown(state.dispose);
-    await open(tester, QuizCreatorPage(state, policy, 3));
+    await open(
+        tester,
+        QuizCreatorPage(state, policy, [
+          {'difficulty': 'easy'},
+          {'difficulty': 'medium'},
+          {'difficulty': 'hard'},
+        ]));
     await tester.enterText(find.byType(TextField).at(0), 'TA quiz');
     await tester.enterText(find.byType(TextField).at(1), '2');
     await tester.enterText(find.byType(TextField).at(2), '20');

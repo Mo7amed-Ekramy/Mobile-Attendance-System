@@ -28,6 +28,10 @@ the checks. Deferred work remains in [PROJECT_REVIEW.md](../PROJECT_REVIEW.md).
 | Unsaved grade route-exit warning | Implemented; verified | Cancel retains edits; discard is explicit; equivalent number formatting is ignored |
 | Grade refresh/pagination guards and republication indicators | Implemented for current page (ADD-04) | Explicit discard, pinned actions and unsaved/pending-publication feedback |
 | Quiz creation, autosave, deadlines, submission and scoring | Implemented | Creates immediately active quizzes with immutable snapshots |
+| Question difficulty and balanced quiz selection | Implemented; verified | Required easy/medium/hard labels and correct answer; 40/40/20 ratio with whole-question rounding, visible distribution and strict shortage checks |
+| Same section questions with shuffled order | Implemented; verified | One saved pool per quiz; question and option order shuffled per attempt and stable on resume |
+| TA quiz results roster | Implemented; verified | Section roster with not-started/in-progress/submitted/timed-out status and automatic scores; refreshed every 10 seconds |
+| Automatic gradebook refresh | Implemented; verified | Submitted quiz scores appear in the TA gradebook without manual refresh; 10-second polling pauses during unsaved edits, saving or conflict review |
 | Quiz readiness and answer-save feedback | Implemented; verified | Viewing creates no attempt; explicit start, server timing, pending/confirmed/failed choices and retry; unanswered overview |
 | Early quiz close | Implemented; tested for normal flow | Scoped staff control, saved-answer scoring and notifications; cancellation is supported before attempts begin |
 | Quiz scheduling, preparation and cancellation | Implemented; verified (ADD-06) | Future scheduled starts, hidden preparation drafts, explicit launch and cancellation before any attempt; 10-second server sweep |

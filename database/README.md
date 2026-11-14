@@ -92,6 +92,9 @@ are retained.
 - `003_verify.sql`: relationship checks and temporary constraint probes; probes roll back.
 - `004_api_schema.sql`: hashed login sessions, idempotency receipts, published snapshots.
 - `005_assessment_scope.sql`: section-specific assessment eligibility.
+- `006_workflow_completion.sql`: attendance drafts and quiz cancellation.
+- `007_quiz_difficulty.sql`: question difficulty and quiz difficulty snapshots;
+  existing questions require manual classification.
 - `seed_manifest.json`: source fingerprints, counts, and checksums of every imported field.
 - `prepare_seed.py`: reproducible conversion; uses Python standard library only.
 - `manage.py`: creates the database if absent, applies scripts, and verifies the import.
@@ -101,8 +104,8 @@ Schema and seed scripts are transactional and safe to replay. The identical seed
 is skipped on a repeat run, preserving existing data. A different seed will fail
 if academic data already exists; it does not silently overwrite or delete rows.
 Future schema edits require a new numbered migration recorded in
-`attendance.schema_migrations`. `server/setup.py` applies API migrations 004 and
-005 separately after the academic seed is installed.
+`attendance.schema_migrations`. `server/setup.py` applies API migrations 004
+through 007 separately after the academic seed is installed.
 
 ## Inspect in pgAdmin
 

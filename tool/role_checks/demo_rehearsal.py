@@ -77,7 +77,7 @@ def main():
             for points in (2, 3):
                 call('POST', '/courses/1/questions', role='ta', json={
                     'prompt': f'Rehearsal question {points}', 'options': ['Correct', 'Wrong'],
-                    'correct_index': 0, 'points': str(points)})
+                    'correct_index': 0, 'points': str(points), 'difficulty': 'easy' if points == 2 else 'medium'})
             quiz = call('POST', '/courses/1/quizzes', role='ta', json={
                 'section_id': 1, 'category_id': category, 'title': 'Shared rehearsal quiz',
                 'question_count': 2, 'duration_minutes': 20})

@@ -237,10 +237,10 @@ class DoctorChecks:
             return 'One initial write succeeds, one conflicts'
         C('Grades', 'Concurrent initial edits do not silently overwrite', concurrent_writes)
 
-        C('Question bank', 'Invalid correct-answer index rejected', lambda: self.call('POST', '/courses/1/questions', {'prompt': 'Question', 'options': ['A', 'B'], 'correct_index': 4}, status=422) and 'HTTP 422')
-        C('Question bank', 'Blank option rejected', lambda: self.call('POST', '/courses/1/questions', {'prompt': 'Question', 'options': ['A', ' '], 'correct_index': 0}, status=422) and 'HTTP 422')
+        C('Question bank', 'Invalid correct-answer index rejected', lambda: self.call('POST', '/courses/1/questions', {'prompt': 'Question', 'options': ['A', 'B'], 'correct_index': 4, 'difficulty': 'easy'}, status=422) and 'HTTP 422')
+        C('Question bank', 'Blank option rejected', lambda: self.call('POST', '/courses/1/questions', {'prompt': 'Question', 'options': ['A', ' '], 'correct_index': 0, 'difficulty': 'easy'}, status=422) and 'HTTP 422')
         for index in (1, 2):
-            self.call('POST', '/courses/1/questions', {'prompt': f'Doctor question {index}', 'options': ['Correct', 'Wrong'], 'correct_index': 0, 'points': '2'})
+            self.call('POST', '/courses/1/questions', {'prompt': f'Doctor question {index}', 'options': ['Correct', 'Wrong'], 'correct_index': 0, 'points': '2', 'difficulty': 'easy' if index == 1 else 'medium'})
         C('Question bank', 'Questions and marked answers persist for staff', lambda: R(len(self.call('GET', '/courses/1/questions')) == 2, 'Questions missing'))
         C('Permissions', 'Student cannot fetch bank answer keys', lambda: self.call('GET', '/courses/1/questions', role=self.student, status=403) and 'HTTP 403')
         quiz_body = {'section_id': 1, 'category_id': cid, 'title': 'Doctor role quiz', 'question_count': 2, 'duration_minutes': 20}

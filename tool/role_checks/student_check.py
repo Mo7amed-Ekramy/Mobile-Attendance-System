@@ -142,7 +142,7 @@ def api_checks(s):
         check('permissions: student denied '+path,'API',lambda p=path:s.call('GET',p,role='student',expected=403))
     for path,body in [
         ('/courses/1/sessions',{'kind':'lecture','title':'Forbidden'}),
-        ('/courses/1/questions',{'prompt':'Forbidden','options':['a','b'],'correct_index':0}),
+        ('/courses/1/questions',{'prompt':'Forbidden','options':['a','b'],'correct_index':0,'difficulty':'easy'}),
         ('/courses',{'code':'Forbidden','name':'Forbidden','department_section_id':1,'ta_user_id':1}),
         ('/courses/1/policy/publish',None),
     ]:
@@ -217,7 +217,7 @@ def api_checks(s):
     check('grades: published excuse is explicit and has no score','API',lambda:expect(s.call('GET','/courses/1/assessments',role='student')[0]['state']=='excused' and s.call('GET','/courses/1/assessments',role='student')[0]['score'] is None))
 
     for point in (2,3):
-        s.call('POST','/courses/1/questions',role='ta',json={'prompt':f'Student question {point}','options':['Correct','Wrong'],'correct_index':0,'points':str(point)})
+        s.call('POST','/courses/1/questions',role='ta',json={'prompt':f'Student question {point}','options':['Correct','Wrong'],'correct_index':0,'points':str(point),'difficulty':'easy' if point == 2 else 'medium'})
     def make_quiz(title,section=1):
         return s.call('POST','/courses/1/quizzes',role='doctor',json={'title':title,'section_id':section,'category_id':STATE['category'],'question_count':2,'duration_minutes':20})
     STATE['quiz']=make_quiz('Student practice quiz')

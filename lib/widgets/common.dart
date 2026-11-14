@@ -47,11 +47,13 @@ class RemotePage<T> extends StatefulWidget {
       required this.builder,
       this.scope = '',
       this.beforeRefresh,
+      this.canAutoRefresh,
       this.refreshInterval});
   final Future<T> Function() load;
   final Widget Function(T data, VoidCallback reload) builder;
   final String scope;
   final Future<bool> Function()? beforeRefresh;
+  final bool Function()? canAutoRefresh;
   final Duration? refreshInterval;
   @override
   State<RemotePage<T>> createState() => _RemotePageState<T>();
@@ -70,7 +72,9 @@ class _RemotePageState<T> extends State<RemotePage<T>> {
     future = widget.load();
     if (widget.refreshInterval != null) {
       refreshTimer = Timer.periodic(widget.refreshInterval!, (_) {
-        if (mounted && !fetching) reload();
+        if (mounted && !fetching && (widget.canAutoRefresh?.call() ?? true)) {
+          reload();
+        }
       });
     }
   }

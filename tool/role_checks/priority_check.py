@@ -120,7 +120,7 @@ def main():
         policy = sandbox.call('PUT', '/courses/1/policy', json={'total_points': '100', 'categories': [
             {'code': 'quiz', 'name': 'الكويزات', 'kind': 'assessment', 'max_points': '100', 'allocation_mode': 'normalized'}]})
         sandbox.call('POST', '/courses/1/questions', json={
-            'prompt': 'سؤال تجريبي', 'options': ['أ', 'ب'], 'correct_index': 0, 'points': '1'})
+            'prompt': 'سؤال تجريبي', 'options': ['أ', 'ب'], 'correct_index': 0, 'points': '1', 'difficulty': 'easy'})
         sandbox.call('POST', '/courses/1/quizzes', json={'title': 'كويز الاستعداد', 'section_id': 1,
             'category_id': policy['categories'][0]['id'], 'question_count': 1, 'duration_minutes': 20})
         with sandbox.browser(width=400, height=900) as student:

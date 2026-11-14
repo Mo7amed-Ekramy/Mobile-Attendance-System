@@ -57,7 +57,7 @@ python -m venv server/.venv
 .\server\.venv\Scripts\python.exe server/setup.py
 ```
 
-Setup applies migrations 004, 005 and 006, initializes only missing password hashes,
+Setup applies migrations 004 through 007, initializes only missing password hashes,
 and provisions the restricted `university_attendance_api` database login.
 Generated credentials are written to ignored `server/.env`; preserve that file
 when rerunning setup. Setup preserves existing passwords and creates no
@@ -75,8 +75,10 @@ The runner does not auto-reload: stop it with Ctrl+C and start it again after
 backend edits. PostgreSQL data survives an API restart.
 
 After pulling the UI/workflow refinement, rerun `server/setup.py` before restarting
-the API. Migration 006 adds draft attendance marks and quiz cancellation; it
-preserves existing academic and operational records. The running API sweeps quiz
+the API. Migration 006 adds draft attendance marks and quiz cancellation; migration
+007 adds question difficulty and quiz difficulty snapshots. Both preserve existing
+academic and operational records. Label existing questions in the bank before
+using them in a new balanced quiz. The running API sweeps quiz
 deadlines every 10 seconds, including when students close the app.
 
 ## 3. Run Flutter
