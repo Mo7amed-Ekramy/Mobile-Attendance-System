@@ -1,0 +1,39 @@
+{
+  "checks": [
+    {
+      "check": "Doctor creates scoped lecture and renders actual QR",
+      "passed": true
+    },
+    {
+      "check": "Real QR decoder reads doctor image from simulated video and persists present/source=qr in PostgreSQL",
+      "passed": true,
+      "record_count": 1
+    },
+    {
+      "check": "Scanner pauses after success; keeping QR in frame does not reopen receipt",
+      "passed": true
+    },
+    {
+      "check": "Explicit scan-another restarts the real decoder and returns the same receipt without duplicate records",
+      "passed": true
+    },
+    {
+      "check": "Student reopens the same persisted receipt after browser reload",
+      "passed": true
+    },
+    {
+      "check": "Doctor closes lecture; saved QR attendance remains present in official totals",
+      "passed": true
+    },
+    {
+      "check": "Mobile readiness screen displays real timing and creates zero attempts",
+      "passed": true
+    },
+    {
+      "check": "Explicit start creates exactly one attempt",
+      "passed": true
+    }
+  ],
+  "isolated_database_cleaned": true,
+  "camera": "Simulated video of the doctor-rendered QR; physical phone camera not tested"
+}

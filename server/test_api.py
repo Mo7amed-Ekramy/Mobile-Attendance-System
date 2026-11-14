@@ -1,9 +1,11 @@
 """Role journeys against an isolated, temporary PostgreSQL database, never app data."""
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 import os
 from pathlib import Path
 import secrets
 import sys
+import time
 import unittest
 
 from fastapi.testclient import TestClient
@@ -29,7 +31,7 @@ class ApiJourneys(unittest.TestCase):
             admin.execute(sql.SQL('CREATE DATABASE {} TEMPLATE template0 ENCODING \'UTF8\'').format(sql.Identifier(cls.name)))
         try:
             with psycopg.connect(connection_info(cls.test_config), autocommit=True, row_factory=dict_row) as db:
-                for file in ('001_schema.sql', '002_seed.sql', '004_api_schema.sql', '005_assessment_scope.sql'):
+                for file in ('001_schema.sql', '002_seed.sql', '004_api_schema.sql', '005_assessment_scope.sql', '006_workflow_completion.sql'):
                     db.execute((HERE.parent / 'database' / file).read_text(encoding='utf-8'))
                 cls.student = db.execute('''SELECT u.username,s.university_id,s.id AS student_id,s.user_id,e.id AS enrollment_id
                     FROM students s JOIN app_users u ON u.id=s.user_id JOIN enrollments e ON e.student_id=s.id
@@ -151,6 +153,87 @@ class ApiJourneys(unittest.TestCase):
         signed_in_again = self.login('ta_nehad00', 'TA@123')
         self.assertEqual(self.call('GET', f"/courses/1/sessions/{session['id']}", signed_in_again)['state'], 'finalized')
 
+    def test_qr_receipt_is_persisted_reopenable_scoped_and_not_duplicated(self):
+        session = self.call('POST', '/courses/1/sessions', body={
+            'kind': 'lecture', 'section_id': 1, 'title': 'QR persistence proof', 'duration_minutes': 30})
+        path = f"/courses/1/sessions/{session['id']}"
+        qr = self.call('GET', path + '/qr')
+        body = {'payload': qr['payload']}
+        outside = self.login(self.outside['username'], self.outside['university_id'])
+        self.call('POST', '/attendance/check-ins', outside, body, status=403)
+        self.call('POST', '/attendance/check-ins', self.ta, body, status=403)
+        self.call('POST', '/attendance/check-ins', self.learner,
+                  {'payload': qr['payload'] + 'tampered'}, status=422)
+        self.assertEqual(self.query('SELECT count(*) AS n FROM attendance_records')[0]['n'], 0)
+        receipt = self.call('POST', '/attendance/check-ins', self.learner, body)
+        stored = self.query('SELECT * FROM attendance_records WHERE id=%s', (receipt['receipt_id'],))[0]
+        self.assertEqual((stored['enrollment_id'], stored['status'], stored['source']),
+                         (self.student['enrollment_id'], 'present', 'qr'))
+        self.assertEqual(stored['recorded_at'].isoformat(), receipt['recorded_at'])
+        self.assertEqual(receipt['session_title'], 'QR persistence proof')
+        self.assertTrue(receipt['course_code'])
+        duplicate = self.call('POST', '/attendance/check-ins', self.learner, body)
+        self.assertTrue(duplicate['duplicate'])
+        self.assertEqual(duplicate['receipt_id'], receipt['receipt_id'])
+        self.call('POST', '/auth/logout', self.learner)
+        learner = self.login(self.student['username'], self.student['university_id'])
+        detail = self.call('GET', path, learner)
+        self.assertEqual(detail['record']['receipt_id'], receipt['receipt_id'])
+        self.assertEqual(detail['record']['recorded_at'], receipt['recorded_at'])
+        self.assertEqual(detail['course_code'], receipt['course_code'])
+        peer = self.login(self.peer['username'], self.peer['university_id'])
+        self.assertIsNone(self.call('GET', path, peer)['record'])
+        self.call('GET', path, outside, status=403)
+        self.call('POST', path + '/close')
+        summary = self.call('GET', '/courses/1/sessions/summary', learner)
+        self.assertEqual(summary['lecture'], {'present': 1, 'eligible': 1})
+        self.assertEqual(self.query('SELECT count(*) AS n FROM attendance_records WHERE session_id=%s AND enrollment_id=%s',
+                                  (session['id'], self.student['enrollment_id']))[0]['n'], 1)
+
+    def test_quiz_readiness_does_not_start_attempt_and_uses_global_close(self):
+        quiz = self.create_live_quiz()
+        path = f"/quizzes/{quiz['id']}"
+        self.query("UPDATE quizzes SET ends_at=now()+interval '1 minute' WHERE id=%s", (quiz['id'],))
+        for _ in range(2):
+            info = self.call('GET', path + '/readiness', self.learner)
+            self.assertIsNone(info['attempt'])
+            self.assertNotIn('questions', info)
+            self.assertNotIn('is_correct', str(info))
+            self.assertTrue(info['course_code'])
+        self.assertEqual(self.query('SELECT count(*) AS n FROM quiz_attempts')[0]['n'], 0)
+        outside = self.login(self.outside['username'], self.outside['university_id'])
+        self.call('GET', path + '/readiness', outside, status=403)
+        attempt = self.call('POST', path + '/start', self.learner)
+        self.assertEqual(attempt['deadline_at'], info['ends_at'])
+        self.assertEqual(self.call('POST', path + '/start', self.learner)['id'], attempt['id'])
+        self.assertEqual(self.query('SELECT count(*) AS n FROM quiz_attempts')[0]['n'], 1)
+
+    def test_publication_preview_covers_whole_assessment_and_rejects_stale_preview(self):
+        policy = self.policy()
+        assessment = self.call('POST', '/courses/1/assessments', body={
+            'category_id': policy['categories'][0]['id'], 'title': 'Shared publication', 'kind': 'assignment', 'max_points': '10'})
+        self.call('POST', '/courses/1/policy/publish')
+        base = f"/courses/1/assessments/{assessment['id']}"
+        students = [self.student, self.outside]
+        self.call('PATCH', base + '/results', body={'rows': [
+            {'enrollment_id': s['enrollment_id'], 'state': 'recorded', 'score': '0', 'revision': 0} for s in students]})
+        preview = self.call('GET', base + '/publication-preview?section_id=1&offset=50')
+        total = self.query("SELECT count(*) AS n FROM enrollments WHERE offering_id=1 AND state='active'")[0]['n']
+        self.assertEqual(preview['eligible'], total)
+        self.assertEqual((preview['recorded'], preview['unrecorded'], preview['saved_results']), (2, total - 2, 2))
+        self.assertEqual(preview['scope'], 'جميع سكاشن المقرر')
+        self.call('GET', base + '/publication-preview', self.ta, status=403)
+        self.call('GET', base + '/publication-preview', self.learner, status=403)
+        self.call('PATCH', base + '/results', body={'rows': [
+            {'enrollment_id': self.student['enrollment_id'], 'state': 'excused', 'score': None, 'revision': 1}]})
+        self.call('POST', base + '/publish', body={'fingerprint': preview['fingerprint']}, status=409)
+        self.assertEqual(self.query('SELECT count(*) AS n FROM published_results')[0]['n'], 0)
+        preview = self.call('GET', base + '/publication-preview')
+        self.assertEqual(preview['excused'], 1)
+        result = self.call('POST', base + '/publish', body={'fingerprint': preview['fingerprint']})
+        self.assertEqual(result['count'], 2)
+        self.assertTrue(self.call('GET', base + '/publication-preview')['republication'])
+
     def test_grade_policy_zero_missing_publication_and_audited_correction(self):
         self.policy('95')
         self.call('POST', '/courses/1/policy/publish', status=422)
@@ -208,6 +291,7 @@ class ApiJourneys(unittest.TestCase):
         submitted = self.call('POST', f"/quizzes/{quiz['id']}/submit", self.learner, {'answers': answers})
         self.assertIsNone(submitted['score'])
         self.assertEqual(self.query('SELECT score FROM quiz_attempts WHERE id=%s', (attempt['id'],))[0]['score'], 5)
+        self.call('POST', f"/courses/1/quizzes/{quiz['id']}/close")
         self.call('POST', f"/courses/1/assessments/{quiz['assessment_id']}/publish")
         self.assertEqual(self.call('POST', f"/quizzes/{quiz['id']}/start", self.learner)['score'], '5.00')
 
@@ -232,6 +316,7 @@ class ApiJourneys(unittest.TestCase):
         answers = self.query('''SELECT q.id AS question_id,o.id AS option_id FROM quiz_questions q
             JOIN quiz_options o ON o.quiz_question_id=q.id WHERE q.quiz_id=%s AND o.is_correct''', (quiz['id'],))
         self.call('POST', f"/quizzes/{quiz['id']}/submit", self.learner, {'answers': answers})
+        self.call('POST', f"/courses/1/quizzes/{quiz['id']}/close")
         self.call('POST', f"/courses/1/assessments/{quiz['assessment_id']}/publish")
         grades = self.call('GET', '/courses/1/grades', self.learner)
         self.assertEqual(grades['official_total'], '100.00')
@@ -326,6 +411,121 @@ class ApiJourneys(unittest.TestCase):
         self.call('POST', f"/courses/1/quizzes/{other['id']}/close", self.ta, status=403)
         self.assertTrue(self.query("SELECT 1 FROM audit_events WHERE action='quiz.close' AND entity_id=%s", (quiz['id'],)))
 
+    def test_attendance_draft_round_trip_conflict_and_finalization(self):
+        session = self.call('POST', '/courses/1/sessions', self.ta,
+            {'kind': 'section', 'title': 'Persistent draft', 'section_id': 1})
+        path = f"/courses/1/sessions/{session['id']}"
+        detail = self.call('GET', path, self.ta)
+        first = detail['rows'][0]['enrollment_id']
+        body = {'revision': detail['revision'], 'rows': [{'enrollment_id': first, 'status': 'present'}]}
+        with ThreadPoolExecutor(max_workers=2) as workers:
+            responses = list(workers.map(lambda _: self.client.put('/api/v1' + path + '/draft',
+                headers=self.ta, json=body), range(2)))
+        self.assertEqual(sorted(response.status_code for response in responses), [200, 409])
+        restored = self.call('GET', path, self.ta)
+        self.assertEqual(restored['rows'][0]['status'], 'present')
+        self.assertEqual(restored['revision'], detail['revision'] + 1)
+        self.assertFalse(self.query('SELECT 1 FROM attendance_records WHERE session_id=%s', (session['id'],)))
+        self.call('GET', path, self.learner, status=403)
+        self.call('PUT', path + '/draft', self.ta, {'revision': restored['revision'], 'rows': [
+            {'enrollment_id': self.outside['enrollment_id'], 'status': 'present'}]}, status=422)
+        self.call('POST', path + '/finalize', self.ta, {'revision': restored['revision'], 'rows': [
+            {'enrollment_id': row['enrollment_id'], 'status': row['status'] or 'absent'} for row in restored['rows']]})
+        self.assertFalse(self.query('SELECT 1 FROM attendance_draft_marks WHERE session_id=%s', (session['id'],)))
+        self.call('PUT', path + '/draft', self.ta, body, status=409)
+
+    def test_quiz_preparation_schedule_and_cancel_release_grade_budget(self):
+        self.policy(points='1')
+        category = self.call('GET', '/courses/1/policy')['categories'][0]['id']
+        self.call('POST', '/courses/1/questions', self.ta,
+            {'prompt': 'Scheduled?', 'options': ['Yes', 'No'], 'correct_index': 0})
+        future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+        draft = {'title': 'Prepared', 'section_id': 1, 'category_id': category,
+                 'question_count': 1, 'duration_minutes': 20, 'prepare_only': True}
+        quiz = self.call('POST', '/courses/1/quizzes', self.ta, draft)
+        path = f"/courses/1/quizzes/{quiz['id']}"
+        self.assertFalse(self.call('GET', '/courses/1/quizzes', self.learner))
+        self.call('POST', f"/quizzes/{quiz['id']}/start", self.learner, status=409)
+        self.call('POST', path + '/launch', self.ta, {'starts_at': future})
+        listed = self.call('GET', '/courses/1/quizzes', self.learner)
+        self.assertEqual(listed[0]['state'], 'scheduled')
+        self.call('POST', f"/quizzes/{quiz['id']}/start", self.learner, status=409)
+        self.call('POST', path + '/cancel', self.learner, status=403)
+        self.call('POST', path + '/cancel', self.ta)
+        self.call('POST', path + '/cancel', self.ta)
+        self.assertFalse(self.call('GET', '/courses/1/assessments', self.ta))
+        # A cancelled quiz must no longer consume the fixed grade allocation.
+        self.query("UPDATE grade_categories SET allocation_mode='fixed' WHERE id=%s", (category,))
+        active = self.call('POST', '/courses/1/quizzes', self.ta,
+            draft | {'prepare_only': False, 'starts_at': future})
+        self.query("UPDATE quizzes SET starts_at=now()-interval '1 minute',ends_at=now()+interval '20 minutes' WHERE id=%s", (active['id'],))
+        self.call('POST', f"/quizzes/{active['id']}/start", self.learner)
+        self.assertEqual(self.query('SELECT state FROM quizzes WHERE id=%s', (active['id'],))[0]['state'], 'active')
+        self.call('POST', f"/courses/1/quizzes/{active['id']}/cancel", self.ta, status=409)
+        self.call('POST', '/courses/1/quizzes', self.ta,
+            draft | {'starts_at': '2020-01-01T12:00:00Z', 'prepare_only': False}, status=422)
+
+    def test_background_finalizes_abandoned_attempt_without_student_request(self):
+        quiz = self.create_live_quiz()
+        attempt = self.call('POST', f"/quizzes/{quiz['id']}/start", self.learner)
+        answer = self.query('''SELECT q.id AS question_id,o.id AS option_id,q.points
+            FROM quiz_questions q JOIN quiz_options o ON o.quiz_question_id=q.id
+            WHERE q.quiz_id=%s AND o.is_correct ORDER BY q.id LIMIT 1''', (quiz['id'],))[0]
+        self.call('PATCH', f"/quizzes/{quiz['id']}/answers", self.learner, {'answers': [
+            {'question_id': answer['question_id'], 'option_id': answer['option_id']}]})
+        self.query("UPDATE quiz_attempts SET started_at=now()-interval '2 minutes',deadline_at=now()-interval '1 minute' WHERE id=%s", (attempt['id'],))
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            saved = self.query('SELECT state,score FROM quiz_attempts WHERE id=%s', (attempt['id'],))[0]
+            if saved['state'] == 'timed_out':
+                break
+            time.sleep(.2)
+        self.assertEqual(saved['state'], 'timed_out')
+        self.assertEqual(saved['score'], answer['points'])
+        self.assertTrue(self.query("SELECT 1 FROM audit_events WHERE action='quiz.submit' AND entity_id=%s", (attempt['id'],)))
+
+    def test_late_answer_rejection_preserves_server_finalization(self):
+        quiz = self.create_live_quiz()
+        attempt = self.call('POST', f"/quizzes/{quiz['id']}/start", self.learner)
+        self.query("UPDATE quiz_attempts SET started_at=now()-interval '2 minutes',deadline_at=now()-interval '1 minute' WHERE id=%s", (attempt['id'],))
+        self.call('PATCH', f"/quizzes/{quiz['id']}/answers", self.learner, {'answers': []}, status=409)
+        saved = self.query('SELECT state,score FROM quiz_attempts WHERE id=%s', (attempt['id'],))[0]
+        self.assertEqual(saved['state'], 'timed_out')
+        self.assertEqual(saved['score'], 0)
+
+    def test_student_report_uses_full_history_and_published_grades_with_scope(self):
+        sessions = self.query("""INSERT INTO attendance_sessions(offering_id,kind,title,starts_at,ends_at,state,created_by)
+            SELECT 1,'lecture','Historical '||i,now()-i*interval '1 day',now()-i*interval '1 day'+interval '1 hour','closed',
+                (SELECT id FROM app_users WHERE username='doc_rasha01') FROM generate_series(1,104) i RETURNING id""")
+        self.query('''INSERT INTO session_eligibility(session_id,enrollment_id,offering_id)
+            SELECT s.id,e.id,1 FROM attendance_sessions s CROSS JOIN enrollments e WHERE s.offering_id=1 AND e.offering_id=1''')
+        self.query("""INSERT INTO attendance_records(session_id,enrollment_id,offering_id,status,source)
+            SELECT x.session_id,x.enrollment_id,1,CASE WHEN x.session_id=%s THEN 'absent' ELSE 'present' END,'manual'
+            FROM session_eligibility x WHERE x.enrollment_id=%s""", (sessions[0]['id'], self.student['enrollment_id']))
+        first = self.call('GET', '/courses/1/sessions?limit=100', self.learner)
+        last = self.call('GET', '/courses/1/sessions?limit=100&offset=100', self.learner)
+        self.assertEqual(len(first) + len(last), 104)
+        self.assertFalse({row['id'] for row in first} & {row['id'] for row in last})
+        self.policy()
+        category = self.call('GET', '/courses/1/policy')['categories'][0]['id']
+        assessment = self.call('POST', '/courses/1/assessments', body={
+            'title': 'Published score', 'kind': 'assignment', 'section_id': 1, 'category_id': category, 'max_points': '10'})
+        self.call('POST', '/courses/1/policy/publish')
+        self.call('PATCH', f"/courses/1/assessments/{assessment['id']}/results", self.ta, {'rows': [
+            {'enrollment_id': self.student['enrollment_id'], 'score': '7', 'state': 'recorded', 'revision': 0}]})
+        unpublished = self.call('GET', '/courses/1/report/students?section_id=1', self.ta)
+        own = next(row for row in unpublished['rows'] if row['enrollment_id'] == self.student['enrollment_id'])
+        self.assertIsNone(own['official_total'])
+        self.call('POST', f"/courses/1/assessments/{assessment['id']}/publish")
+        report = self.call('GET', '/courses/1/report/students?section_id=1', self.ta)
+        self.assertTrue(all(row['course_section_id'] == 1 for row in report['rows']))
+        own = next(row for row in report['rows'] if row['enrollment_id'] == self.student['enrollment_id'])
+        self.assertEqual(own['official_total'], '70.00')
+        self.assertEqual(own['attendance']['lecture']['eligible'], 104)
+        self.assertEqual(own['attendance']['lecture']['rate'], '99.04')
+        self.call('GET', '/courses/1/report/students?section_id=2', self.ta, status=403)
+        self.call('GET', '/courses/1/report/students', self.learner, status=403)
+
     def test_report_summary_respects_section_scope_and_excludes_excuses(self):
         shared = self.call('POST', '/courses/1/sessions', body={'kind': 'lecture', 'title': 'Shared lecture'})
         self.call('POST', f"/courses/1/sessions/{shared['id']}/close")
@@ -351,6 +551,89 @@ class ApiJourneys(unittest.TestCase):
         self.call('GET', '/courses/1/sessions/summary?section_id=2', self.ta, status=403)
         own = self.call('GET', '/courses/1/sessions/summary', self.learner)
         self.assertEqual(own['section'], {'present': 0, 'eligible': 0})
+
+
+    def test_ta_cannot_create_or_grade_exams_but_doctor_can(self):
+        policy = self.policy()
+        for kind in ('midterm', 'final'):
+            body = {'title': kind, 'kind': kind, 'category_id': policy['categories'][0]['id'],
+                    'section_id': 1, 'max_points': '10'}
+            self.call('POST', '/courses/1/assessments', self.ta, body, status=403)
+            assessment = self.call('POST', '/courses/1/assessments', body=body)
+            path = f"/courses/1/assessments/{assessment['id']}/results"
+            result = self.call('GET', path, self.ta)
+            self.assertFalse(result['editable'])
+            row = {'enrollment_id': self.student['enrollment_id'], 'score': '0',
+                   'state': 'recorded', 'revision': 0}
+            self.call('PATCH', path, self.ta, {'rows': [row]}, status=403)
+            self.call('PATCH', path, body={'rows': [row]})
+            visible = self.call('GET', '/courses/1/assessments?section_id=1', self.ta)
+            self.assertNotIn(assessment['id'], [item['id'] for item in visible])
+
+    def test_electronic_quiz_results_are_read_only_until_quiz_closes(self):
+        active = self.create_live_quiz()
+        policy = self.call('GET', '/courses/1/policy')
+        body = {'title': 'Prepared quiz', 'section_id': 1,
+                'category_id': policy['categories'][0]['id'], 'question_count': 1,
+                'duration_minutes': 20}
+        draft = self.call('POST', '/courses/1/quizzes', self.ta, body | {'prepare_only': True})
+        scheduled = self.call('POST', '/courses/1/quizzes', self.ta, body | {
+            'starts_at': (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()})
+        for quiz in (draft, scheduled, active):
+            path = f"/courses/1/assessments/{quiz['assessment_id']}"
+            for user in (self.ta, self.doctor):
+                book = self.call('GET', path + '/results', user)
+                self.assertFalse(book['editable'])
+                self.call('PATCH', path + '/results', user, {'rows': [{
+                    'enrollment_id': self.student['enrollment_id'], 'score': '0',
+                    'state': 'recorded', 'revision': 0}]}, status=409)
+            self.call('GET', path + '/publication-preview', status=409)
+            self.call('POST', path + '/publish', status=409)
+            self.call('POST', path + '/publish', self.ta, status=403)
+        self.assertEqual(self.query('SELECT count(*) AS n FROM assessment_results')[0]['n'], 0)
+        self.call('POST', f"/courses/1/quizzes/{active['id']}/close", self.ta)
+        path = f"/courses/1/assessments/{active['assessment_id']}"
+        self.assertTrue(self.call('GET', path + '/results', self.ta)['editable'])
+        self.call('PATCH', path + '/results', self.ta, {'rows': [{
+            'enrollment_id': self.student['enrollment_id'], 'score': '0',
+            'state': 'recorded', 'revision': 0}]})
+        self.call('POST', path + '/publish')
+
+    def test_shared_lecture_details_match_the_selected_ta_section(self):
+        lecture = self.call('POST', '/courses/1/sessions', body={'kind': 'lecture', 'title': 'Shared'})
+        own_sections = self.call('GET', '/courses/1/assignments', self.ta)
+        for section in own_sections[:2]:
+            path = f"/courses/1/sessions/{lecture['id']}?section_id={section['id']}"
+            rows = self.call('GET', path, self.ta)['rows']
+            expected = self.query('SELECT id FROM enrollments WHERE course_section_id=%s AND state=\'active\'', (section['id'],))
+            self.assertEqual({r['enrollment_id'] for r in rows}, {r['id'] for r in expected})
+        self.call('GET', f"/courses/1/sessions/{lecture['id']}?section_id=2", self.ta, status=403)
+        own = self.call('POST', '/courses/1/sessions', self.ta, {'kind': 'section', 'title': 'Own', 'section_id': 1})
+        other_own = next(s for s in own_sections if s['id'] != 1)
+        self.call('GET', f"/courses/1/sessions/{own['id']}?section_id={other_own['id']}", self.ta, status=403)
+
+    def test_ta_cannot_create_an_empty_attendance_roster(self):
+        ids = [r['id'] for r in self.query("SELECT id FROM enrollments WHERE course_section_id=1 AND state='active'")]
+        try:
+            self.query("UPDATE enrollments SET state='dropped' WHERE id=ANY(%s)", (ids,))
+            self.call('POST', '/courses/1/sessions', self.ta,
+                      {'kind': 'section', 'title': 'Empty', 'section_id': 1}, status=422)
+            self.assertEqual(self.query('SELECT count(*) AS n FROM attendance_sessions')[0]['n'], 0)
+        finally:
+            self.query("UPDATE enrollments SET state='active' WHERE id=ANY(%s)", (ids,))
+
+    def test_ta_pending_filter_keeps_only_own_drafts(self):
+        draft = self.call('POST', '/courses/1/sessions', self.ta,
+                          {'kind': 'section', 'title': 'Pending', 'section_id': 1})
+        self.call('POST', '/courses/1/sessions', body={'kind': 'lecture', 'title': 'Lecture'})
+        finalized = self.call('POST', '/courses/1/sessions', self.ta,
+                              {'kind': 'section', 'title': 'Finalized', 'section_id': 1})
+        detail = self.call('GET', f"/courses/1/sessions/{finalized['id']}", self.ta)
+        self.call('POST', f"/courses/1/sessions/{finalized['id']}/finalize", self.ta, {
+            'revision': detail['revision'], 'rows': [
+                {'enrollment_id': r['enrollment_id'], 'status': 'present'} for r in detail['rows']]})
+        rows = self.call('GET', '/courses/1/sessions?section_id=1&state=draft', self.ta)
+        self.assertEqual([r['id'] for r in rows], [draft['id']])
 
 
 if __name__ == '__main__':

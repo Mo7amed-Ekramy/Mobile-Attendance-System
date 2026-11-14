@@ -89,8 +89,8 @@ void main() {
       ..section = selected.sections.first;
     addTearDown(state.dispose);
     await _open(tester, SettingsPage(state));
-    await tester.ensureVisible(find.text('تقرير المقرر'));
-    await tester.tap(find.text('تقرير المقرر'));
+    await tester.ensureVisible(find.text('تقرير السكشن'));
+    await tester.tap(find.text('تقرير السكشن'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.textContaining('50.0%'), findsOneWidget);

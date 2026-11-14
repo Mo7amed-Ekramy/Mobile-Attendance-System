@@ -48,7 +48,9 @@ still required for that stronger guarantee (DOC-04).
 3. TA opens the question bank, saves two questions (the current UI has four
    options per question), assigns the correct answer, and sets points to 2 and 3.
 4. TA creates a CS381/SE1 quiz with both questions and a 20-minute duration.
-   Creation starts it immediately. Scheduling/cancellation are not implemented.
+   Choose **فتح الآن** for this walkthrough. **جدولة موعد** schedules a future
+   start in device-local time; **حفظ مسودة** prepares an invisible quiz that staff
+   can later open. Cancellation is available until the first attempt starts.
 5. Doctor publishes the grading policy and opens a 20-minute lecture. Confirm
    that a rotating QR is displayed; the student scans it with a tested camera or
    copies the exact payload into the manual-entry panel.
@@ -59,13 +61,17 @@ still required for that stronger guarantee (DOC-04).
 8. Doctor closes the lecture, materializing absences for students who did not
    check in. TA creates a section attendance session, marks every eligible row
    explicitly, and finalizes it with the student marked present. Partial marks
-   cannot yet be saved as a draft; finish the roster before navigating away.
+   can be saved with **حفظ مسودة الحضور**, reopened and completed later. Only
+   finalization contributes to attendance rates and grades.
 9. Doctor publishes quiz results. With both answers correct and the student
    present in both sessions, the official student total is 100/100. Open the
    student's grades, attendance history and notifications.
 10. Doctor and TA open **المزيد → تقرير المقرر**. Check the selected SE1 scope,
     student count, two finalized sessions and attendance summaries. This is a
-    screen report; CSV/PDF export, printing and an audit-history viewer are pending.
+    screen report. Open **كشف الطلاب والطباعة** to inspect individual attendance
+    and published grades, export a PDF, or print the selected scope. Search limits
+    the displayed rows; export includes the entire selected scope. CSV export and
+    an audit-history viewer remain deferred.
 11. Stop only the API with Ctrl+C and restart it with the same `server/.env`.
     Refresh each browser, reselect CS381/SE1 if needed, and confirm attendance,
     submitted quiz, published grades, notifications and restored identities remain.

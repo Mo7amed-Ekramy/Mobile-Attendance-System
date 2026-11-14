@@ -66,3 +66,8 @@ feature contracts; their controls are not presented as working features here.
 Native keyboard overlap, accessibility scaling and real camera/permission
 behavior still require a mobile device. A 320px Chrome view is useful layout
 evidence but does not complete that native-device coverage.
+
+
+The 2026-11-06 refinement supersedes the draft-persistence and quiz-lifecycle
+limitations above. See [UI_REFINEMENT.md](UI_REFINEMENT.md) for the responsive
+visual refresh, new workflows and current verification evidence.

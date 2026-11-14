@@ -18,7 +18,7 @@ from security import hash_password
 def main():
     admin = connection_env()
     with psycopg.connect(connection_info(admin), row_factory=dict_row) as connection:
-        for migration in ('004_api_schema.sql', '005_assessment_scope.sql'):
+        for migration in ('004_api_schema.sql', '005_assessment_scope.sql', '006_workflow_completion.sql'):
             connection.execute((HERE.parent / 'database' / migration).read_text(encoding='utf-8'))
         users = connection.execute('SELECT id, role FROM attendance.app_users WHERE password_hash IS NULL ORDER BY id').fetchall()
         student_ids = {row['user_id']: row['university_id'] for row in connection.execute('SELECT user_id, university_id FROM attendance.students')}

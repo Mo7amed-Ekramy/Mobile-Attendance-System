@@ -10,8 +10,10 @@ import 'features/courses.dart';
 import 'features/dashboard.dart';
 import 'features/grading.dart';
 import 'features/settings.dart';
+import 'features/quizzes.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
+import 'widgets/scope_switcher.dart';
 
 class AttendanceApp extends StatefulWidget {
   const AttendanceApp({super.key, this.api});
@@ -83,40 +85,13 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int tab = 0;
   AppState get state => widget.state;
-  Future<void> selectScope() async {
-    await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        builder: (sheet) => SafeArea(
-            child: SizedBox(
-                height: MediaQuery.sizeOf(sheet).height * .7,
-                child: ListView(children: [
-                  const ListTile(title: Text('اختيار المقرر والسكشن')),
-                  for (final course in state.courses)
-                    ExpansionTile(
-                        title: Text('${course.code} · ${course.name}'),
-                        initiallyExpanded: course.id == state.course?.id,
-                        children: [
-                          if (state.user!.role == Role.doctor)
-                            ListTile(
-                                title: const Text('جميع السكاشن'),
-                                onTap: () {
-                                  state.selectCourse(course);
-                                  setState(() => tab = 0);
-                                  Navigator.pop(sheet);
-                                }),
-                          for (final section in course.sections)
-                            ListTile(
-                                title: Text(section.label),
-                                subtitle: Text(section.taName),
-                                onTap: () {
-                                  state.selectCourse(course);
-                                  state.selectSection(section);
-                                  setState(() => tab = 0);
-                                  Navigator.pop(sheet);
-                                }),
-                        ]),
-                ]))));
+
+  Future<void> refreshCourses() async {
+    try {
+      await state.refreshCourses();
+    } catch (error) {
+      if (mounted) notice(context, '$error');
+    }
   }
 
   @override
@@ -174,45 +149,133 @@ class _AppShellState extends State<AppShell> {
     } else {
       body = GradesPage(state);
     }
+    final width = MediaQuery.sizeOf(context).width;
+    final wide = width >= 960;
+    final compact = width < 600;
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-        appBar: AppBar(
-            title: const Text('جامعة أسيوط الأهلية'),
-            actions: [
+      appBar: AppBar(
+        toolbarHeight: 64,
+        titleSpacing: compact ? 12 : 20,
+        title: Row(children: [
+          Tooltip(
+              message: 'جامعة أسيوط الأهلية',
+              child:
+                  Image.asset('assets/images/logo.png', width: 34, height: 34)),
+          const SizedBox(width: 10),
+          if (!compact || state.course == null)
+            const Flexible(
+                child: Text('جامعة أسيوط الأهلية',
+                    maxLines: 1, overflow: TextOverflow.ellipsis)),
+          if (state.course != null) ...[
+            if (!compact) const SizedBox(width: 20),
+            Flexible(child: ScopeSwitcher(state, compact: compact)),
+          ],
+        ]),
+        actions: [
+          if (compact)
+            PopupMenuButton<String>(
+                tooltip: 'خيارات الصفحة',
+                icon: const Icon(Icons.more_vert),
+                onSelected: (value) {
+                  if (value == 'refresh') {
+                    refreshCourses();
+                  } else {
+                    openPage(context, 'الكويزات', QuizzesPage(state));
+                  }
+                },
+                itemBuilder: (_) => [
+                      if (state.course != null)
+                        const PopupMenuItem(
+                            value: 'quizzes', child: Text('الكويزات')),
+                      const PopupMenuItem(
+                          value: 'refresh', child: Text('تحديث البيانات')),
+                    ])
+          else ...[
+            if (state.course != null)
               IconButton(
-                  tooltip: 'تحديث البيانات',
-                  icon: const Icon(Icons.refresh),
-                  onPressed: () async {
-                    try {
-                      await state.refreshCourses();
-                    } catch (error) {
-                      if (context.mounted) notice(context, '$error');
-                    }
-                  }),
-            ],
-            bottom: state.course == null
-                ? null
-                : PreferredSize(
-                    preferredSize: const Size.fromHeight(56),
-                    child: InkWell(
-                        onTap: selectScope,
-                        child: Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                            child: Row(children: [
-                              const Icon(Icons.menu_book_outlined, size: 20),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                  child: Text(
-                                      '${state.course!.code} · ${state.section?.label ?? 'جميع السكاشن'}',
-                                      maxLines: 2)),
-                              const Icon(Icons.expand_more),
-                            ]))))),
-        body: SafeArea(child: body),
-        bottomNavigationBar: NavigationBar(
-            selectedIndex: tab,
-            onDestinationSelected: (index) => setState(() => tab = index),
-            destinations: [
-              for (var i = 0; i < labels.length; i++)
-                NavigationDestination(icon: Icon(icons[i]), label: labels[i]),
-            ]));
+                  tooltip: 'الكويزات',
+                  icon: const Icon(Icons.quiz_outlined),
+                  onPressed: () =>
+                      openPage(context, 'الكويزات', QuizzesPage(state))),
+            IconButton(
+                tooltip: 'تحديث البيانات',
+                icon: const Icon(Icons.refresh),
+                onPressed: refreshCourses),
+          ],
+          const SizedBox(width: 4),
+        ],
+      ),
+      body: SafeArea(
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (wide) ...[
+          Container(
+              width: 224,
+              color: scheme.surface,
+              child: Column(children: [
+                const SizedBox(height: 20),
+                Text('مساحتك الأكاديمية',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: scheme.onSurfaceVariant)),
+                const SizedBox(height: 18),
+                Expanded(
+                    child: NavigationRail(
+                  extended: true,
+                  minExtendedWidth: 224,
+                  backgroundColor: scheme.surface,
+                  selectedIndex: tab,
+                  onDestinationSelected: (index) => setState(() => tab = index),
+                  destinations: [
+                    for (var i = 0; i < labels.length; i++)
+                      NavigationRailDestination(
+                          icon: Icon(icons[i]), label: Text(labels[i])),
+                  ],
+                )),
+                Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Row(children: [
+                      CircleAvatar(
+                          backgroundColor: scheme.primaryContainer,
+                          child: Text(state.user!.name.characters.first,
+                              style: TextStyle(color: scheme.primary))),
+                      const SizedBox(width: 12),
+                      Expanded(
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                            Text(state.user!.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.labelLarge),
+                            Text(state.user!.roleLabel,
+                                style: Theme.of(context).textTheme.bodySmall),
+                          ])),
+                    ])),
+              ])),
+          VerticalDivider(width: 1, color: scheme.outlineVariant),
+        ],
+        Expanded(
+            child: KeyedSubtree(
+                key: PageStorageKey(
+                    'shell-${state.user!.id}-$tab-${state.course?.id}-${state.section?.id}'),
+                child: body)),
+      ])),
+      bottomNavigationBar: wide
+          ? null
+          : DecoratedBox(
+              decoration: BoxDecoration(
+                  border:
+                      Border(top: BorderSide(color: scheme.outlineVariant))),
+              child: NavigationBar(
+                  selectedIndex: tab,
+                  onDestinationSelected: (index) => setState(() => tab = index),
+                  destinations: [
+                    for (var i = 0; i < labels.length; i++)
+                      NavigationDestination(
+                          icon: Icon(icons[i]), label: labels[i]),
+                  ])),
+    );
   }
 }

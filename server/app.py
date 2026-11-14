@@ -1,4 +1,6 @@
 from contextlib import asynccontextmanager
+import asyncio
+import logging
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,13 +16,30 @@ import quizzes
 
 
 def create_app(database: Database | None = None):
+    async def maintain_quizzes(db):
+        def sweep():
+            with db.transaction() as connection:
+                quizzes.advance_quiz_lifecycle(connection)
+        while True:
+            try:
+                await asyncio.to_thread(sweep)
+            except Exception:
+                logging.getLogger(__name__).exception('Quiz lifecycle sweep failed')
+            await asyncio.sleep(10)
+
     @asynccontextmanager
     async def lifespan(app):
         app.state.db = database or Database()
         app.state.db.open()
+        maintenance = asyncio.create_task(maintain_quizzes(app.state.db))
         try:
             yield
         finally:
+            maintenance.cancel()
+            try:
+                await maintenance
+            except asyncio.CancelledError:
+                pass
             app.state.db.close()
 
     app = FastAPI(title='University Attendance API', version='1.0.0', lifespan=lifespan)

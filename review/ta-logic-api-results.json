@@ -1,0 +1,398 @@
+[
+  {
+    "check": "Login: valid TA credentials and actual role",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Login: blank identifier rejected",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Login: blank password rejected",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Login: wrong password rejected",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Login: unknown account rejected",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Login: prefixed identifier rejected",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Login: surrounding identifier whitespace and uppercase accepted",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Login: password is case sensitive",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Login: password whitespace remains significant",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Login: admin account is excluded from mobile roles",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Authentication: no-token requests rejected",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Authentication: invalid token rejected",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Profile: TA identity reflects authenticated account",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Authentication: deactivated account rejected",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Authentication: server expiry rejects session",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Logout: revokes session and relogin restores identity",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Courses: only assigned courses and sections are returned",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Courses: unrelated course roster denied",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Sections: other TA section denied",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Roster: exact assigned section and count",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Roster: pagination has no repeated records",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Roster: university ID search returns matching student",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Roster: no-match search returns empty",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Course creation and catalog admin options denied to TA",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Assignments: only own five sections returned",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Report: assigned student count and initially empty attendance",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Lecture: TA cannot open or close doctor lecture",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Lecture QR: TA cannot request credential",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Student QR check-in: forbidden to TA",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Lecture details: no other-TA roster exposure",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Attendance: cannot create another TA section",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Attendance: section selection required",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Attendance: unresolved roster cannot be finalized",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Attendance: cross-section row cannot be finalized",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Attendance: all students marked present/absent/excused and finalized",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Attendance: duplicate finalization rejected",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Attendance: finalized statuses persist after logout",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Report: finalized TA section counted",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Policy: no initial policy shown as null",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Policy: TA can inspect doctor draft",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Policy: TA edits/publication denied",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Assessments: section-specific creation persists",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Assessments: TA must select a section",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Assessments: other TA section denied",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Gradebook: save explicit zero, missing and excused values",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Gradebook: saved states and zero remain distinct",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Gradebook: out-of-range score rejected",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Gradebook: cross-section student rejected",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Gradebook: stale existing revision rejected",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Gradebook: publication is doctor-only",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Gradebook: published correction needs a reason",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Gradebook: reasoned correction saves and preserves old student snapshot",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Gradebook: repeated correction still requires audit reason",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Questions: initially empty bank",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Questions: invalid correct option rejected",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Questions: blank option rejected",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Questions: bank persists options and answer keys for authorized TA",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Quizzes: question count above bank rejected",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Quizzes: other TA section denied",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Quizzes: random subset/snapshots and student notification persist",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Quizzes: TA cannot take student attempt",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Quizzes: TA sees submitted attempt and server score",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Quizzes: doctor publishes TA quiz and student sees score",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Quizzes: abandoned expired attempt is resolved for TA grading",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Notifications: TA cannot mark student notification read",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  },
+  {
+    "check": "Notifications: TA can read and mark own notification",
+    "layer": "API",
+    "status": "PASS",
+    "evidence": "Expected behavior observed."
+  }
+]

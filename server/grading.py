@@ -1,4 +1,6 @@
 from decimal import Decimal
+import hashlib
+import json
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -24,6 +26,7 @@ def section_allocations(db, offering_id, category_id):
     return db.execute('''SELECT cs.id,COALESCE(sum(a.max_points),0) AS total
         FROM course_sections cs LEFT JOIN assessments a ON a.category_id=%s
         AND (a.course_section_id IS NULL OR a.course_section_id=cs.id)
+        AND NOT EXISTS(SELECT 1 FROM quizzes q WHERE q.assessment_id=a.id AND q.state='cancelled')
         WHERE cs.offering_id=%s GROUP BY cs.id ORDER BY cs.id''',
         (category_id, offering_id)).fetchall()
 
@@ -119,6 +122,8 @@ def assessment_scope(db, user, offering_id, assessment_id):
     row = db.execute('SELECT * FROM assessments WHERE id=%s AND offering_id=%s', (assessment_id, offering_id)).fetchone()
     if not row:
         fail(404, 'التقييم غير موجود.')
+    if db.execute("SELECT 1 FROM quizzes WHERE assessment_id=%s AND state='cancelled'", (assessment_id,)).fetchone():
+        fail(409, 'لا يمكن تعديل أو نشر تقييم كويز ملغى.')
     if row['course_section_id'] is not None:
         authorize_offering(db, user, offering_id, row['course_section_id'], staff=True)
     return row
@@ -134,6 +139,8 @@ class AssessmentDraft(BaseModel):
 
 def create_assessment(db, user, offering_id, body):
     authorize_offering(db, user, offering_id, body.section_id, staff=True)
+    if user['role'] == 'ta' and body.kind in ('midterm', 'final'):
+        fail(403, 'تقييمات الميدتيرم والفاينال خاصة بدكتور المقرر. المعيد مسؤول عن أعمال السكشن فقط.')
     if user['role'] == 'ta' and body.section_id is None:
         fail(422, 'اختر السكشن الخاص بهذا التقييم.')
     db.execute('SELECT id FROM course_offerings WHERE id=%s FOR UPDATE', (offering_id,))
@@ -169,16 +176,34 @@ def assessments(offering_id: int, request: Request, section_id: int | None = Non
                 LEFT JOIN assessment_results r ON r.assessment_id=a.id AND r.enrollment_id=%s
                 LEFT JOIN published_results p ON p.result_id=r.id WHERE a.offering_id=%s AND a.published_at IS NOT NULL
                 AND gp.state='published' AND (a.course_section_id IS NULL OR a.course_section_id=%s)
+                AND NOT EXISTS(SELECT 1 FROM quizzes q WHERE q.assessment_id=a.id AND q.state='cancelled')
                 ORDER BY a.id''', (own['id'], offering_id, own['course_section_id'])).fetchall()
-        query = '''SELECT a.*,c.name AS category FROM assessments a JOIN grade_categories c ON c.id=a.category_id WHERE a.offering_id=%s'''
+        query = '''SELECT a.*,c.name AS category FROM assessments a JOIN grade_categories c ON c.id=a.category_id WHERE a.offering_id=%s
+            AND NOT EXISTS(SELECT 1 FROM quizzes q WHERE q.assessment_id=a.id AND q.state='cancelled')'''
         params = [offering_id]
         if section_id is not None:
             query += ' AND (a.course_section_id IS NULL OR a.course_section_id=%s)'
             params.append(section_id)
         if user['role'] == 'ta':
+            query += " AND a.kind NOT IN ('midterm','final')"
             query += ' AND (a.course_section_id IS NULL OR a.course_section_id IN (SELECT id FROM course_sections WHERE ta_user_id=%s))'
             params.append(user['id'])
         return db.execute(query + ' ORDER BY a.id', params).fetchall()
+
+
+def result_editing_error(db, user, assessment):
+    if user['role'] == 'ta' and assessment['kind'] in ('midterm', 'final'):
+        return 403, 'رصد درجات الميدتيرم والفاينال خاص بدكتور المقرر.'
+    quiz = db.execute('SELECT state FROM quizzes WHERE assessment_id=%s', (assessment['id'],)).fetchone()
+    if quiz and quiz['state'] != 'closed':
+        return 409, 'التصحيح الإلكتروني تلقائي. يمكن تعديل النتائج ونشرها بعد إغلاق الكويز فقط.'
+    return None
+
+
+def require_result_editing(db, user, assessment):
+    error = result_editing_error(db, user, assessment)
+    if error:
+        fail(*error)
 
 
 @router.get('/courses/{offering_id}/assessments/{assessment_id}/results')
@@ -195,7 +220,9 @@ def gradebook(offering_id: int, assessment_id: int, request: Request, section_id
             record = db.execute('SELECT id,score,state,visibility,revision FROM assessment_results WHERE assessment_id=%s AND enrollment_id=%s', (assessment_id, row['enrollment_id'])).fetchone()
             row.update(record or {'score': None, 'state': 'unrecorded', 'visibility': 'draft', 'revision': 0})
             row['score'] = money(row['score'])
-        return result | {'assessment': assessment}
+        error = result_editing_error(db, user, assessment)
+        return result | {'assessment': assessment, 'editable': error is None,
+                         'editing_unavailable_reason': error[1] if error else None}
 
 
 class ResultRow(BaseModel):
@@ -216,6 +243,8 @@ def save_results(offering_id: int, assessment_id: int, body: ResultBatch, reques
         fail(422, 'لا يمكن تكرار الطالب في نفس الطلب.')
     with request.app.state.db.transaction() as db:
         assessment = assessment_scope(db, user, offering_id, assessment_id)
+        db.execute('SELECT id FROM course_offerings WHERE id=%s FOR UPDATE', (offering_id,))
+        require_result_editing(db, user, assessment)
         for row in body.rows:
             own = db.execute("SELECT * FROM enrollments WHERE id=%s AND offering_id=%s AND state='active'", (row.enrollment_id, offering_id)).fetchone()
             if not own:
@@ -242,11 +271,53 @@ def save_results(offering_id: int, assessment_id: int, body: ResultBatch, reques
     return {'ok': True, 'count': len(body.rows)}
 
 
-@router.post('/courses/{offering_id}/assessments/{assessment_id}/publish')
-def publish_results(offering_id: int, assessment_id: int, request: Request, user=Depends(principal)):
+def publication_preview(db, offering_id, assessment):
+    roster = db.execute('''SELECT e.id,r.state,r.revision,r.visibility FROM enrollments e
+        LEFT JOIN assessment_results r ON r.enrollment_id=e.id AND r.assessment_id=%s
+        WHERE e.offering_id=%s AND e.state='active'
+        AND (%s::bigint IS NULL OR e.course_section_id=%s) ORDER BY e.id''',
+        (assessment['id'], offering_id, assessment['course_section_id'], assessment['course_section_id'])).fetchall()
+    saved = db.execute('''SELECT id,enrollment_id,revision,state,visibility FROM assessment_results
+        WHERE assessment_id=%s ORDER BY id''', (assessment['id'],)).fetchall()
+    scope = 'جميع سكاشن المقرر'
+    if assessment['course_section_id'] is not None:
+        section = db.execute('SELECT section_number,department_code FROM course_section_directory WHERE id=%s',
+                             (assessment['course_section_id'],)).fetchone()
+        scope = f"سكشن {section['section_number']} ({section['department_code']})"
+    fingerprint = hashlib.sha256(json.dumps({'roster': roster, 'saved': saved,
+        'published_at': assessment['published_at']}, sort_keys=True, default=str).encode()).hexdigest()
+    return {'assessment_id': assessment['id'], 'title': assessment['title'], 'scope': scope,
+        'eligible': len(roster), 'recorded': sum(r['state'] == 'recorded' for r in roster),
+        'excused': sum(r['state'] == 'excused' for r in roster),
+        'unrecorded': sum(r['state'] in (None, 'unrecorded') for r in roster),
+        'saved_results': len(saved), 'pending_changes': sum(r['visibility'] == 'draft' for r in saved),
+        'republication': assessment['published_at'] is not None, 'fingerprint': fingerprint}
+
+
+@router.get('/courses/{offering_id}/assessments/{assessment_id}/publication-preview')
+def preview_publication(offering_id: int, assessment_id: int, request: Request, user=Depends(principal)):
     with request.app.state.db.transaction() as db:
         authorize_offering(db, user, offering_id, doctor=True)
-        assessment_scope(db, user, offering_id, assessment_id)
+        db.execute('SELECT id FROM course_offerings WHERE id=%s FOR UPDATE', (offering_id,))
+        assessment = assessment_scope(db, user, offering_id, assessment_id)
+        require_result_editing(db, user, assessment)
+        return publication_preview(db, offering_id, assessment)
+
+
+class PublicationConfirmation(BaseModel):
+    fingerprint: str = Field(min_length=64, max_length=64)
+
+
+@router.post('/courses/{offering_id}/assessments/{assessment_id}/publish')
+def publish_results(offering_id: int, assessment_id: int, request: Request,
+                    body: PublicationConfirmation | None = None, user=Depends(principal)):
+    with request.app.state.db.transaction() as db:
+        authorize_offering(db, user, offering_id, doctor=True)
+        db.execute('SELECT id FROM course_offerings WHERE id=%s FOR UPDATE', (offering_id,))
+        assessment = assessment_scope(db, user, offering_id, assessment_id)
+        require_result_editing(db, user, assessment)
+        if body and body.fingerprint != publication_preview(db, offering_id, assessment)['fingerprint']:
+            fail(409, 'تغيرت النتائج بعد المعاينة. افتح مراجعة النشر من جديد.')
         if not current_policy(db, offering_id, student=True):
             fail(422, 'اعتمد لائحة المقرر أولاً.')
         rows = db.execute('SELECT * FROM assessment_results WHERE assessment_id=%s FOR UPDATE', (assessment_id,)).fetchall()
@@ -269,39 +340,44 @@ def own_grades(offering_id: int, request: Request, user=Depends(principal)):
         fail(403, 'هذه الصفحة تعرض نتائج الطالب نفسه.')
     with request.app.state.db.transaction() as db:
         own = enrollment(db, user, offering_id)
-        value = current_policy(db, offering_id, student=True)
-        if not value:
-            return {'policy': None, 'categories': [], 'earned': None, 'official_total': None}
-        categories, earned_total, complete = [], Decimal(0), True
-        for category in value['categories']:
-            maximum = Decimal(category['max_points'])
-            earned, ready = None, False
-            if maximum == 0:
-                earned, ready = Decimal(0), True
-            elif category['kind'] != 'assessment':
-                kind = 'lecture' if category['kind'] == 'lecture_attendance' else 'section'
-                count = db.execute('''SELECT count(*) FILTER(WHERE r.status='present') AS present,
-                    count(*) FILTER(WHERE r.status IN ('present','absent')) AS eligible
-                    FROM attendance_records r JOIN attendance_sessions s ON s.id=r.session_id
-                    WHERE r.enrollment_id=%s AND s.kind=%s AND s.state IN ('closed','finalized')''', (own['id'], kind)).fetchone()
-                if count['eligible']:
-                    earned, ready = maximum * Decimal(count['present']) / Decimal(count['eligible']), True
-            else:
-                items = db.execute('''SELECT a.max_points,p.score,p.state FROM assessments a
-                    LEFT JOIN assessment_results r ON r.assessment_id=a.id AND r.enrollment_id=%s
-                    LEFT JOIN published_results p ON p.result_id=r.id WHERE a.category_id=%s
-                    AND (a.course_section_id IS NULL OR a.course_section_id=%s)''', (own['id'], category['id'], own['course_section_id'])).fetchall()
-                included = [item for item in items if item['state'] == 'recorded']
-                ready = bool(items) and all(item['state'] in ('recorded', 'excused') for item in items)
-                if included:
-                    raw = sum(item['score'] for item in included)
-                    denominator = sum(item['max_points'] for item in included)
-                    earned = raw if category['allocation_mode'] == 'fixed' else maximum * raw / denominator
-            complete = complete and ready
-            if earned is not None:
-                earned_total += earned
-            categories.append({'id': category['id'], 'name': category['name'], 'max_points': money(maximum), 'earned': money(earned), 'complete': ready})
-        return {'policy': value, 'categories': categories, 'earned': money(earned_total), 'official_total': money(earned_total) if complete else None}
+        return grades_for_enrollment(db, offering_id, own)
+
+
+def grades_for_enrollment(db, offering_id, own):
+    value = current_policy(db, offering_id, student=True)
+    if not value:
+        return {'policy': None, 'categories': [], 'earned': None, 'official_total': None}
+    categories, earned_total, complete = [], Decimal(0), True
+    for category in value['categories']:
+        maximum = Decimal(category['max_points'])
+        earned, ready = None, False
+        if maximum == 0:
+            earned, ready = Decimal(0), True
+        elif category['kind'] != 'assessment':
+            kind = 'lecture' if category['kind'] == 'lecture_attendance' else 'section'
+            count = db.execute('''SELECT count(*) FILTER(WHERE r.status='present') AS present,
+                count(*) FILTER(WHERE r.status IN ('present','absent')) AS eligible
+                FROM attendance_records r JOIN attendance_sessions s ON s.id=r.session_id
+                WHERE r.enrollment_id=%s AND s.kind=%s AND s.state IN ('closed','finalized')''', (own['id'], kind)).fetchone()
+            if count['eligible']:
+                earned, ready = maximum * Decimal(count['present']) / Decimal(count['eligible']), True
+        else:
+            items = db.execute('''SELECT a.max_points,p.score,p.state FROM assessments a
+                LEFT JOIN assessment_results r ON r.assessment_id=a.id AND r.enrollment_id=%s
+                LEFT JOIN published_results p ON p.result_id=r.id WHERE a.category_id=%s
+                AND (a.course_section_id IS NULL OR a.course_section_id=%s)
+                    AND NOT EXISTS(SELECT 1 FROM quizzes q WHERE q.assessment_id=a.id AND q.state='cancelled')''', (own['id'], category['id'], own['course_section_id'])).fetchall()
+            included = [item for item in items if item['state'] == 'recorded']
+            ready = bool(items) and all(item['state'] in ('recorded', 'excused') for item in items)
+            if included:
+                raw = sum(item['score'] for item in included)
+                denominator = sum(item['max_points'] for item in included)
+                earned = raw if category['allocation_mode'] == 'fixed' else maximum * raw / denominator
+        complete = complete and ready
+        if earned is not None:
+            earned_total += earned
+        categories.append({'id': category['id'], 'name': category['name'], 'max_points': money(maximum), 'earned': money(earned), 'complete': ready})
+    return {'policy': value, 'categories': categories, 'earned': money(earned_total), 'official_total': money(earned_total) if complete else None}
 
 
 @router.get('/courses/{offering_id}/report')
@@ -322,3 +398,29 @@ def report(offering_id: int, request: Request, section_id: int | None = None, us
         count = db.execute('''SELECT count(*) AS sessions,count(*) FILTER(WHERE state IN ('closed','finalized')) AS finalized
             FROM attendance_sessions s WHERE ''' + condition, params).fetchone()
         return {'students': rows['total'], **count, 'policy': current_policy(db, offering_id)}
+
+
+@router.get('/courses/{offering_id}/report/students')
+def student_report(offering_id: int, request: Request, section_id: int | None = None, user=Depends(principal)):
+    """Complete scoped roster with full-history attendance and official published totals."""
+    with request.app.state.db.transaction() as db:
+        result = scoped_rows(db, user, offering_id, section_id, limit=100000)
+        ids = [row['enrollment_id'] for row in result['rows']]
+        counts = db.execute("""SELECT r.enrollment_id,s.kind,
+            count(*) FILTER(WHERE r.status='present') AS present,
+            count(*) FILTER(WHERE r.status='absent') AS absent,
+            count(*) FILTER(WHERE r.status='excused') AS excused
+            FROM attendance_records r JOIN attendance_sessions s ON s.id=r.session_id
+            WHERE r.enrollment_id=ANY(%s) AND s.state IN ('closed','finalized')
+            GROUP BY r.enrollment_id,s.kind""", (ids,)).fetchall()
+        by_student = {}
+        for count in counts:
+            eligible = count['present'] + count['absent']
+            by_student.setdefault(count['enrollment_id'], {})[count['kind']] = {
+                'present': count['present'], 'absent': count['absent'], 'excused': count['excused'],
+                'eligible': eligible, 'rate': money(Decimal(100) * count['present'] / eligible) if eligible else None}
+        for row in result['rows']:
+            row['attendance'] = by_student.get(row['enrollment_id'], {})
+            grades = grades_for_enrollment(db, offering_id, {'id': row['enrollment_id'], 'course_section_id': row['course_section_id']})
+            row.update({'earned': grades['earned'], 'official_total': grades['official_total'], 'categories': grades['categories']})
+        return result | {'policy': current_policy(db, offering_id, student=True)}

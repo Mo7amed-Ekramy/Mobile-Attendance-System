@@ -4,12 +4,16 @@ import '../app_state.dart';
 import '../data/api.dart';
 import '../data/models.dart';
 import '../widgets/common.dart';
+import 'reports.dart';
+import 'teaching_assignments.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage(this.state, {super.key});
   final AppState state;
   @override
   Widget build(BuildContext context) => PageContent(children: [
+        const PageHeading(
+            'حسابك الجامعي', 'بياناتك وتفضيلاتك وتحديثات مقرراتك'),
         StatusRow(state.user!.name,
             '${state.user!.roleLabel} · ${state.user!.universityId ?? state.user!.username}'),
         if (state.user!.department != null)
@@ -52,34 +56,29 @@ class SettingsPage extends StatelessWidget {
             onTap: () => openPage(
                 context, 'تغيير كلمة المرور', _ChangePasswordPage(state.api))),
         if (state.course != null && state.user!.role != Role.student) ...[
-          ActionCard(
-              title: 'التكليفات التدريسية',
-              detail: 'المعيدون والسكاشن المسندة',
-              icon: Icons.badge_outlined,
-              onTap: () => openPage(
-                  context,
-                  'التكليفات',
-                  RemotePage<dynamic>(
-                      load: () =>
-                          state.api.getCourse(state.course!, 'assignments'),
-                      builder: (items, reload) => PageContent(children: [
-                            for (final item in items as List)
-                              StatusRow(
-                                  'سكشن ${item['section_number']} (${item['department_code']})',
-                                  '${item['ta_name']} · ${item['student_count']} طالب'),
-                          ])))),
+          if (state.user!.role == Role.doctor)
+            ActionCard(
+                title: 'معيدو المقرر',
+                detail: 'أسماء المعيدين وتوزيع سكاشنهم حسب القسم',
+                icon: Icons.badge_outlined,
+                onTap: () => openPage(context, 'معيدو المقرر',
+                    TeachingAssignmentsPage(state.api, state.course!))),
           // ADD-07: Enhanced report card.
           ActionCard(
-              title: 'تقرير المقرر',
+              title:
+                  state.user!.role == Role.ta ? 'تقرير السكشن' : 'تقرير المقرر',
               detail: 'إحصائيات الحضور والتسجيل والتقييمات',
               icon: Icons.analytics_outlined,
-              onTap: () =>
-                  openPage(context, 'تقرير المقرر', CourseReportPage(state))),
+              onTap: () => openPage(
+                  context,
+                  state.user!.role == Role.ta ? 'تقرير السكشن' : 'تقرير المقرر',
+                  CourseReportPage(state))),
         ],
-        SwitchListTile(
-            title: const Text('الوضع الداكن'),
-            value: state.darkMode,
-            onChanged: state.toggleTheme),
+        MergeSemantics(
+            child: ListTile(
+                title: const Text('الوضع الداكن'),
+                trailing: Switch(
+                    value: state.darkMode, onChanged: state.toggleTheme))),
         AsyncButton(
             label: 'تسجيل الخروج',
             icon: Icons.logout,
@@ -217,9 +216,19 @@ class CourseReportPage extends StatelessWidget {
       final policy = report['policy'] as Map<String, dynamic>?;
 
       return PageContent(children: [
-        Text('تقرير المقرر', style: Theme.of(context).textTheme.headlineSmall),
+        Text(state.user!.role == Role.ta ? 'تقرير السكشن' : 'تقرير المقرر',
+            style: Theme.of(context).textTheme.headlineSmall),
         StatusRow('المقرر',
             '${state.course!.code} · ${state.section?.label ?? 'جميع السكاشن'}'),
+        ActionCard(
+            title: 'كشف الطلاب والطباعة',
+            detail: 'حضور ودرجات كل طالب · تصدير PDF وطباعة النطاق المحدد',
+            icon: Icons.print_outlined,
+            onTap: () => openPage(
+                context,
+                'تقرير الطلاب',
+                StudentReportPage(state.api, state.course!,
+                    section: state.section))),
 
         // ── Section: Students ────────────────────────────────────────
         _ReportSection('إحصائيات الطلاب', Icons.people_outline),

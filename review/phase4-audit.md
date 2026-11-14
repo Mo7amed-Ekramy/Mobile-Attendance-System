@@ -45,3 +45,9 @@ The earlier BUG-03 independent-expiry requirement and full-history pagination
 also remain prerequisites for claiming the entire remediation is complete.
 See [the current feature matrix](../docs/FEATURE_STATUS.md) and
 [Phase 5 verification](../docs/PHASE5_VERIFICATION.md).
+
+
+2026-11-06 follow-up: attendance draft persistence, quiz scheduling/preparation/
+cancellation, independent attempt expiry and PDF student reports are implemented.
+Current validation and remaining manual/deferred scope are recorded in
+[UI_REFINEMENT.md](../docs/UI_REFINEMENT.md).

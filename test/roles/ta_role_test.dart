@@ -90,11 +90,10 @@ void main() {
         AnimatedBuilder(
             animation: state, builder: (_, __) => SettingsPage(state)));
     expect(state.darkMode, isFalse);
-    await tester.tap(find.byType(SwitchListTile));
+    await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();
     expect(state.darkMode, isTrue);
-    expect(tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
-        isTrue);
+    expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
   });
 
   testWidgets('TA can select policy category and create a section assignment',
@@ -109,7 +108,8 @@ void main() {
           return http.Response('{"id":10}', 200);
         }));
     addTearDown(api.dispose);
-    await open(tester, AssessmentPage(api, course(), policy, sectionId: 1));
+    await open(tester,
+        AssessmentPage(api, course(), policy, sectionId: 1, allowExams: false));
     await tester.enterText(find.byType(TextField).at(0), 'TA assignment');
     await tester.enterText(find.byType(TextField).at(1), '10');
     await tester.tap(find.byType(DropdownButtonFormField<int>));
@@ -118,6 +118,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byType(DropdownButtonFormField<String>));
     await tester.pumpAndSettle();
+    expect(find.text('ميدتيرم'), findsNothing);
+    expect(find.text('فاينال'), findsNothing);
     await tester.tap(find.text('تكليف').last);
     await tester.pumpAndSettle();
     await tester.tap(find.text('إنشاء التقييم'));

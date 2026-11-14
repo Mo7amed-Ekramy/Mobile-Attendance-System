@@ -21,22 +21,32 @@ class _CoursesPageState extends State<CoursesPage> {
   @override
   Widget build(BuildContext context) {
     final state = widget.state;
+    final ta = state.user!.role == Role.ta;
+    bool matchesCourse(CourseOffering course) =>
+        course.code.toLowerCase().contains(search) ||
+        course.name.toLowerCase().contains(search);
+    bool matchesSection(CourseSection section) =>
+        section.label.toLowerCase().contains(search);
     final courses = state.courses
         .where((course) =>
-            course.code.toLowerCase().contains(search) ||
-            course.name.toLowerCase().contains(search))
+            matchesCourse(course) ||
+            (ta && course.sections.any(matchesSection)))
         .toList();
     return PageContent(children: [
-      Text(
+      PageHeading(
           state.user!.role == Role.student
               ? 'مقرراتي الدراسية'
               : state.user!.role == Role.ta
                   ? 'سكاشني المسندة'
                   : 'المقررات المسندة',
-          style: Theme.of(context).textTheme.headlineSmall),
+          ta
+              ? '${state.courses.length} مقرر · اختر السكشن لفتح الحضور والدرجات وكشف الطلاب'
+              : '${state.courses.length} مقرر · اختر مقرراً لمتابعة الحضور والدرجات'),
       TextField(
-          decoration: const InputDecoration(
-              labelText: 'البحث في المقررات', prefixIcon: Icon(Icons.search)),
+          decoration: InputDecoration(
+              labelText:
+                  ta ? 'البحث في المقررات والسكاشن' : 'البحث في المقررات',
+              prefixIcon: const Icon(Icons.search)),
           onChanged: (value) =>
               setState(() => search = value.trim().toLowerCase())),
       if (state.user!.role == Role.doctor)
@@ -50,24 +60,30 @@ class _CoursesPageState extends State<CoursesPage> {
         const EmptyPanel(
             'لا توجد مقررات مطابقة', 'حدّث البيانات أو غيّر كلمات البحث.'),
       for (final course in courses) ...[
-        ActionCard(
-            title: '${course.code} · ${course.name}',
-            detail: '${course.doctorName} · ${course.sections.length} سكشن',
-            icon: Icons.menu_book_outlined,
-            onTap: () async {
-              state.selectCourse(course);
-              await openPage(context, course.name, CourseDetailPage(state));
-            }),
-        if (state.user!.role == Role.ta)
-          for (final section in course.sections)
+        if (ta)
+          PageHeading('${course.code} · ${course.name}',
+              'دكتور المقرر: ${course.doctorName}')
+        else
+          ActionCard(
+              title: '${course.code} · ${course.name}',
+              detail: state.user!.role == Role.doctor
+                  ? course.termLabel
+                  : '${course.doctorName} · ${course.sections.length} سكشن',
+              icon: Icons.menu_book_outlined,
+              onTap: () async {
+                state.selectCourse(course);
+                await openPage(context, course.name, CourseDetailPage(state));
+              }),
+        if (ta)
+          for (final section in course.sections.where(
+              (section) => matchesCourse(course) || matchesSection(section)))
             ActionCard(
                 title: '${course.code} · ${section.label}',
                 detail:
                     '${section.studentCount} طالب · الحضور والدرجات وكشف الطلاب',
                 icon: Icons.groups_outlined,
                 onTap: () {
-                  state.selectCourse(course);
-                  state.selectSection(section);
+                  state.selectScope(course, selectedSection: section);
                   openPage(context, section.label, SectionWorkspacePage(state));
                 }),
       ],
@@ -81,23 +97,27 @@ class CourseDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => PageContent(children: [
         StatusRow('${state.course!.code} · ${state.course!.name}',
-            '${state.course!.doctorName} · ${state.course!.term}'),
-        for (final section in state.course!.sections)
-          if (state.user!.role == Role.student)
-            StatusRow(section.label,
-                '${section.taName} · ${section.studentCount} طالب')
-          else
-            ActionCard(
-                title: section.label,
-                detail: '${section.taName} · ${section.studentCount} طالب',
-                icon: Icons.groups_outlined,
-                onTap: () {
-                  state.selectSection(section);
-                  openPage(context, section.label, SectionWorkspacePage(state));
-                }),
+            '${state.course!.doctorName} · ${state.course!.termLabel}'),
+        if (state.user!.role != Role.doctor)
+          for (final section in state.course!.sections)
+            if (state.user!.role == Role.student)
+              StatusRow(section.label,
+                  '${section.taName} · ${section.studentCount} طالب')
+            else
+              ActionCard(
+                  title: section.label,
+                  detail: '${section.taName} · ${section.studentCount} طالب',
+                  icon: Icons.groups_outlined,
+                  onTap: () {
+                    state.selectSection(section);
+                    openPage(
+                        context, section.label, SectionWorkspacePage(state));
+                  }),
         ActionCard(
             title: 'سجل الحضور',
-            detail: 'المحاضرات والسكاشن',
+            detail: state.user!.role == Role.doctor
+                ? 'حضور طلاب المقرر'
+                : 'المحاضرات والسكاشن',
             icon: Icons.event_note,
             onTap: () => openPage(context, 'الحضور', AttendancePage(state))),
         ActionCard(
@@ -124,7 +144,7 @@ class SectionWorkspacePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => PageContent(children: [
         PageHeading('${state.course!.code} · ${state.section!.label}',
-            '${state.section!.studentCount} طالب · ${state.section!.taName}'),
+            'المعيد: ${state.section!.taName} · عدد الطلاب: ${state.section!.studentCount}'),
         if (state.user!.role == Role.ta)
           ActionCard(
               title: 'إنشاء كشف حضور السكشن',

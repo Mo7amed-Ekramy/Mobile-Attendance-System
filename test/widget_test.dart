@@ -39,7 +39,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('grade conflicts reload stored values before another edit',
+  testWidgets('grade conflicts retain input until an explicit reviewed choice',
       (tester) async {
     tester.view.physicalSize = const Size(800, 1200);
     tester.view.devicePixelRatio = 1;
@@ -106,10 +106,14 @@ void main() {
     final field = find.byType(TextField).at(1);
     await tester.enterText(field, '8');
     await tester.tap(find.text('حفظ درجات الصفحة'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
     expect(writes, 1);
     expect(reads, 2);
-    expect(tester.widget<TextField>(field).controller!.text, '7.00');
+    expect(tester.widget<TextField>(field).controller!.text, '8');
+    expect(find.textContaining('الخادم: 7.00'), findsOneWidget);
+    await tester.tap(find.text('الاحتفاظ بتعديلاتي للمراجعة ثم الحفظ'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(field).controller!.text, '8');
     await tester.enterText(field, '9');
     await tester.tap(find.text('حفظ درجات الصفحة'));
     await tester.pumpAndSettle();

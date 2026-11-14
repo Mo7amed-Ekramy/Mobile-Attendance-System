@@ -112,3 +112,9 @@
     - تشغيل اختبارات فلاتر: `flutter test` (تحقيق 100% نجاح بدون أي إخفاق).
     - تشغيل اختبارات السيرفر: `python -m unittest test_api.py`.
     - فحص الكود: `flutter analyze` خالي من المشاكل.
+
+
+2026-11-06 follow-up: attendance draft persistence, quiz scheduling/preparation/
+cancellation, independent attempt expiry and PDF student reports are implemented.
+Current validation and remaining manual/deferred scope are recorded in
+[UI_REFINEMENT.md](docs/UI_REFINEMENT.md).

@@ -3,6 +3,8 @@ enum Role { student, ta, doctor }
 double? amount(dynamic value) => value == null ? null : double.parse('$value');
 String points(dynamic value) =>
     value == null ? '—' : amount(value)!.toStringAsFixed(2);
+String pointRatio(dynamic earned, dynamic maximum) =>
+    '\u2066${points(earned)} / ${points(maximum)}\u2069';
 DateTime date(dynamic value) => DateTime.parse('$value').toUtc();
 
 class UserProfile {
@@ -55,6 +57,10 @@ class CourseOffering {
   final String code, name, term, doctorName;
   final bool archived;
   final List<CourseSection> sections;
+  String get termLabel =>
+      term == 'Imported semester 2' || term == 'legacy-semester-2'
+          ? 'الفصل الدراسي الثاني · السنة غير محددة'
+          : term;
 }
 
 class AttendanceSession {

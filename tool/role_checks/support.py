@@ -69,7 +69,7 @@ class Sandbox:
                 admin.execute(sql.SQL("CREATE DATABASE {} TEMPLATE template0 ENCODING 'UTF8'").format(sql.Identifier(self.name)))
             self.created = True
             with psycopg.connect(connection_info(self.config), autocommit=True, row_factory=dict_row) as db:
-                for name in ('001_schema.sql', '002_seed.sql', '004_api_schema.sql', '005_assessment_scope.sql'):
+                for name in ('001_schema.sql', '002_seed.sql', '004_api_schema.sql', '005_assessment_scope.sql', '006_workflow_completion.sql'):
                     db.execute((ROOT / 'database' / name).read_text(encoding='utf-8'))
                 # Provision documented development accounts only in this sandbox.
                 for role in ('doctor', 'ta', 'student'):

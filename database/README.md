@@ -52,6 +52,39 @@ The SQL Server `.bak` is not a PostgreSQL backup. Historical operational records
 inside it have not been imported. Bringing them across would require restoring
 it in SQL Server and exporting those tables separately.
 
+## Reset operational data
+
+`reset_operational_data.py` preserves accounts (including password hashes),
+students, departments, terms, courses, teaching assignments, enrollments and
+migration/import metadata. It empties attendance, grade policies/results,
+question banks, quizzes, notifications, audit events and API sessions/receipts.
+Existing browser sessions must sign in again after a reset.
+
+From `mobile`, inspect the target and row counts without changing data:
+
+```powershell
+.\server\.venv\Scripts\python.exe database/reset_operational_data.py --database university_attendance
+```
+
+For an intentional full operational reset, stop the API first, then run:
+
+```powershell
+.\server\.venv\Scripts\python.exe database/reset_operational_data.py --database university_attendance --apply
+```
+
+The command creates a full PostgreSQL custom-format backup under ignored
+`.local-backups/`, restores it to a uniquely named temporary database, and
+verifies every application table against the source before deleting anything.
+It truncates an explicit list of operational tables in one transaction, without
+cascading into academic tables, then verifies that academic data is unchanged.
+A private manifest records the counts and checksums. The verification database
+is removed; the backup remains available.
+
+Restart the API with `server/run.py` after success. This command clears **all**
+operational records in the selected database; it does not distinguish examples
+from real activity. Software test files are separate from these records and
+are retained.
+
 ## Files
 
 - `001_schema.sql`: PostgreSQL schema migration, keys, indexes, and validation triggers.

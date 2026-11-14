@@ -12,7 +12,7 @@ from grading import AssessmentDraft, create_assessment
 router = APIRouter()
 
 
-def expire_stale_attempts(db, user_ctx=None):
+def expire_stale_attempts(db, user_ctx=None, offering_id=None):
     """BUG-03: Finalize any in_progress attempts whose deadline has already passed.
     user_ctx may be None when called from a background/admin sweep.
     Returns the number of attempts finalized."""
@@ -21,16 +21,26 @@ def expire_stale_attempts(db, user_ctx=None):
         FROM quiz_attempts t
         JOIN quizzes q ON q.id=t.quiz_id
         WHERE t.state='in_progress' AND t.deadline_at <= now()
+        AND (%s::bigint IS NULL OR q.offering_id=%s)
         FOR UPDATE OF t SKIP LOCKED
-    ''').fetchall()
+    ''', (offering_id, offering_id)).fetchall()
     for attempt in stale:
         quiz = db.execute(
             'SELECT q.*,a.title,a.max_points FROM quizzes q JOIN assessments a ON a.id=q.assessment_id WHERE q.id=%s',
             (attempt['quiz_id'],)).fetchone()
         # Synthesize a minimal user context so audit records are accurate.
-        actor = user_ctx or {'id': 0, 'role': 'system'}
+        actor = db.execute('''SELECT s.user_id AS id FROM enrollments e
+            JOIN students s ON s.id=e.student_id WHERE e.id=%s''', (attempt['enrollment_id'],)).fetchone()
         finish_attempt(db, actor, quiz, attempt, timed_out=True)
     return len(stale)
+
+
+def advance_quiz_lifecycle(db, offering_id=None):
+    db.execute("""UPDATE quizzes SET state=CASE WHEN ends_at<=now() THEN 'closed' ELSE 'active' END
+        WHERE state IN ('scheduled','active') AND starts_at<=now()
+        AND (state='scheduled' OR ends_at<=now())
+        AND (%s::bigint IS NULL OR offering_id=%s)""", (offering_id, offering_id))
+    return expire_stale_attempts(db, offering_id=offering_id)
 
 
 class QuestionDraft(BaseModel):
@@ -72,10 +82,17 @@ class QuizDraft(BaseModel):
     title: str = Field(min_length=1, max_length=150)
     question_count: int = Field(ge=1, le=100)
     duration_minutes: int = Field(ge=1, le=120)
+    starts_at: datetime | None = None
+    prepare_only: bool = False
 
 
 @router.post('/courses/{offering_id}/quizzes')
 def create_quiz(offering_id: int, body: QuizDraft, request: Request, user=Depends(principal)):
+    now = datetime.now(timezone.utc)
+    if body.starts_at is not None and (body.starts_at.tzinfo is None or body.starts_at <= now):
+        fail(422, 'اختر موعداً مستقبلياً للكويز مع المنطقة الزمنية.')
+    starts = body.starts_at or now
+    state = 'draft' if body.prepare_only else ('scheduled' if body.starts_at else 'active')
     with request.app.state.db.transaction() as db:
         authorize_offering(db, user, offering_id, body.section_id, staff=True)
         pool = db.execute('SELECT * FROM questions WHERE offering_id=%s ORDER BY id', (offering_id,)).fetchall()
@@ -83,18 +100,72 @@ def create_quiz(offering_id: int, body: QuizDraft, request: Request, user=Depend
             fail(422, 'عدد الأسئلة المطلوبة أكبر من بنك الأسئلة.')
         selected = secrets.SystemRandom().sample(pool, body.question_count)
         assessment = create_assessment(db, user, offering_id, AssessmentDraft(section_id=body.section_id, category_id=body.category_id, title=body.title, kind='quiz', max_points=sum(q['points'] for q in selected)))
-        now = datetime.now(timezone.utc)
         quiz = db.execute('''INSERT INTO quizzes(assessment_id,offering_id,course_section_id,duration_minutes,starts_at,ends_at,state)
-            VALUES (%s,%s,%s,%s,%s,%s,'active') RETURNING *''',
-            (assessment['id'], offering_id, body.section_id, body.duration_minutes, now, now + timedelta(minutes=body.duration_minutes))).fetchone()
+            VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING *''',
+            (assessment['id'], offering_id, body.section_id, body.duration_minutes, starts,
+             starts + timedelta(minutes=body.duration_minutes), state)).fetchone()
         for position, question in enumerate(selected):
             snapshot_id = db.execute('INSERT INTO quiz_questions(quiz_id,offering_id,source_question_id,prompt,points,position) VALUES (%s,%s,%s,%s,%s,%s) RETURNING id',
                 (quiz['id'], offering_id, question['id'], question['prompt'], question['points'], position)).fetchone()['id']
             db.execute('INSERT INTO quiz_options(quiz_question_id,text,is_correct,position) SELECT %s,text,is_correct,position FROM question_options WHERE question_id=%s', (snapshot_id, question['id']))
-        for student in db.execute("SELECT s.user_id FROM enrollments e JOIN students s ON s.id=e.student_id WHERE e.course_section_id=%s AND e.state='active'", (body.section_id,)):
-            notify(db, student['user_id'], offering_id, 'quiz_open', 'كويز جديد للسكشن', body.title)
-        audit(db, user, offering_id, 'quiz.open', 'quiz', quiz['id'], after=body.model_dump())
+        if state != 'draft':
+            notify_quiz(db, quiz, 'quiz_scheduled' if state == 'scheduled' else 'quiz_open',
+                        'كويز مجدول للسكشن' if state == 'scheduled' else 'كويز جديد للسكشن', body.title)
+        audit(db, user, offering_id, 'quiz.' + state, 'quiz', quiz['id'], after=body.model_dump())
         return quiz
+
+
+def notify_quiz(db, quiz, kind, title, message):
+    for student in db.execute("""SELECT s.user_id FROM enrollments e JOIN students s ON s.id=e.student_id
+        WHERE e.course_section_id=%s AND e.state='active'""", (quiz['course_section_id'],)):
+        notify(db, student['user_id'], quiz['offering_id'], kind, title, str(message))
+
+
+def staff_quiz(db, user, offering_id, quiz_id):
+    quiz = db.execute('SELECT * FROM quizzes WHERE id=%s AND offering_id=%s FOR UPDATE',
+                      (quiz_id, offering_id)).fetchone()
+    if not quiz:
+        fail(404, 'الكويز غير موجود.')
+    authorize_offering(db, user, offering_id, quiz['course_section_id'], staff=True)
+    return quiz
+
+
+class LaunchQuiz(BaseModel):
+    starts_at: datetime | None = None
+
+
+@router.post('/courses/{offering_id}/quizzes/{quiz_id}/launch')
+def launch_quiz(offering_id: int, quiz_id: int, body: LaunchQuiz, request: Request, user=Depends(principal)):
+    now = datetime.now(timezone.utc)
+    if body.starts_at is not None and (body.starts_at.tzinfo is None or body.starts_at <= now):
+        fail(422, 'اختر موعداً مستقبلياً صحيحاً.')
+    with request.app.state.db.transaction() as db:
+        quiz = staff_quiz(db, user, offering_id, quiz_id)
+        if quiz['state'] != 'draft':
+            fail(409, 'يمكن فتح المسودة فقط.')
+        starts = body.starts_at or now
+        state = 'scheduled' if body.starts_at else 'active'
+        quiz = db.execute('''UPDATE quizzes SET state=%s,starts_at=%s,ends_at=%s WHERE id=%s RETURNING *''',
+                          (state, starts, starts + timedelta(minutes=quiz['duration_minutes']), quiz_id)).fetchone()
+        notify_quiz(db, quiz, 'quiz_open', 'كويز جديد للسكشن', 'تم فتح كويز جديد. راجع صفحة الكويزات.')
+        audit(db, user, offering_id, 'quiz.launch', 'quiz', quiz_id, after=quiz)
+        return quiz
+
+
+@router.post('/courses/{offering_id}/quizzes/{quiz_id}/cancel')
+def cancel_quiz(offering_id: int, quiz_id: int, request: Request, user=Depends(principal)):
+    with request.app.state.db.transaction() as db:
+        quiz = staff_quiz(db, user, offering_id, quiz_id)
+        if quiz['state'] == 'cancelled':
+            return {'ok': True}
+        if quiz['state'] not in ('draft', 'scheduled', 'active') or db.execute(
+                'SELECT 1 FROM quiz_attempts WHERE quiz_id=%s', (quiz_id,)).fetchone():
+            fail(409, 'لا يمكن إلغاء كويز بدأ الطلاب حله. استخدم الإغلاق المبكر.')
+        db.execute("UPDATE quizzes SET state='cancelled' WHERE id=%s", (quiz_id,))
+        if quiz['state'] != 'draft':
+            notify_quiz(db, quiz, 'quiz_cancelled', 'تم إلغاء كويز السكشن', 'لن يحتسب الكويز الملغى في الدرجات.')
+        audit(db, user, offering_id, 'quiz.cancel', 'quiz', quiz_id)
+        return {'ok': True}
 
 
 @router.post('/courses/{offering_id}/quizzes/{quiz_id}/close')
@@ -117,10 +188,10 @@ def close_quiz(offering_id: int, quiz_id: int, request: Request, user=Depends(pr
         if quiz['state'] != 'active':
             fail(409, 'الكويز ليس نشطاً.')
         # Set quiz to closed so no new attempts can start.
-        db.execute("UPDATE quizzes SET state='closed',ends_at=now() WHERE id=%s", (quiz_id,))
+        db.execute("UPDATE quizzes SET state='closed',ends_at=GREATEST(now(),starts_at+interval '1 millisecond') WHERE id=%s", (quiz_id,))
         # Auto-finalize any in-progress attempts.
         stale = db.execute(
-            "SELECT t.* FROM quiz_attempts t WHERE t.quiz_id=%s AND t.state='in_progress' FOR UPDATE SKIP LOCKED",
+            "SELECT t.* FROM quiz_attempts t WHERE t.quiz_id=%s AND t.state='in_progress' FOR UPDATE",
             (quiz_id,)).fetchall()
         count = 0
         for attempt in stale:
@@ -131,7 +202,7 @@ def close_quiz(offering_id: int, quiz_id: int, request: Request, user=Depends(pr
         for student in db.execute(
                 "SELECT s.user_id FROM enrollments e JOIN students s ON s.id=e.student_id WHERE e.course_section_id=%s AND e.state='active'",
                 (quiz['course_section_id'],)):
-            notify(db, student['user_id'], offering_id, 'quiz_closed', 'تم إغلاق الكويز', quiz_id)
+            notify(db, student['user_id'], offering_id, 'quiz_closed', 'تم إغلاق الكويز', str(quiz_id))
         audit(db, user, offering_id, 'quiz.close', 'quiz', quiz_id, after={'finalized': count})
         return {'ok': True, 'finalized': count}
 
@@ -141,8 +212,10 @@ def close_quiz(offering_id: int, quiz_id: int, request: Request, user=Depends(pr
 def quiz_list(offering_id: int, request: Request, section_id: int | None = None, user=Depends(principal)):
     with request.app.state.db.transaction() as db:
         authorize_offering(db, user, offering_id, section_id)
+        advance_quiz_lifecycle(db, offering_id)
         conditions, params = ['q.offering_id=%s'], [offering_id]
         if user['role'] == 'student':
+            conditions.append("q.state<>'draft'")
             own = enrollment(db, user, offering_id)
             conditions.append('q.course_section_id=%s')
             params.append(own['course_section_id'])
@@ -167,13 +240,35 @@ def quiz_list(offering_id: int, request: Request, section_id: int | None = None,
 def student_quiz(db, user, quiz_id):
     if user['role'] != 'student':
         fail(403, 'حل الكويز متاح للطلاب فقط.')
-    quiz = db.execute('SELECT q.*,a.title,a.max_points FROM quizzes q JOIN assessments a ON a.id=q.assessment_id WHERE q.id=%s', (quiz_id,)).fetchone()
+    quiz = db.execute('SELECT q.*,a.title,a.max_points FROM quizzes q JOIN assessments a ON a.id=q.assessment_id WHERE q.id=%s FOR UPDATE OF q', (quiz_id,)).fetchone()
     if not quiz:
         fail(404, 'الكويز غير موجود.')
     own = enrollment(db, user, quiz['offering_id'])
     if own['course_section_id'] != quiz['course_section_id']:
         fail(403, 'الكويز غير مخصص لسكشنك.')
+    if quiz['state'] in ('draft', 'cancelled'):
+        fail(409, 'الكويز غير متاح للحل.')
+    if quiz['state'] == 'scheduled' and quiz['starts_at'] <= datetime.now(timezone.utc):
+        quiz['state'] = 'active'
+        db.execute("UPDATE quizzes SET state='active' WHERE id=%s", (quiz_id,))
     return quiz, own
+
+
+@router.get('/quizzes/{quiz_id}/readiness')
+def quiz_readiness(quiz_id: int, request: Request, user=Depends(principal)):
+    """Read timing/context without creating an attempt or exposing questions/keys."""
+    with request.app.state.db.transaction() as db:
+        quiz, own = student_quiz(db, user, quiz_id)
+        context = db.execute('''SELECT c.code AS course_code,c.name AS course_name,
+            ds.number AS section_number,d.code AS department_code FROM course_offerings o
+            JOIN courses c ON c.id=o.course_id JOIN course_sections cs ON cs.id=%s
+            JOIN department_sections ds ON ds.id=cs.department_section_id
+            JOIN departments d ON d.id=cs.department_id WHERE o.id=%s''',
+            (quiz['course_section_id'], quiz['offering_id'])).fetchone()
+        attempt = db.execute('SELECT id,state FROM quiz_attempts WHERE quiz_id=%s AND enrollment_id=%s',
+                             (quiz_id, own['id'])).fetchone()
+        return {key: quiz[key] for key in ('id', 'title', 'offering_id', 'duration_minutes', 'starts_at', 'ends_at', 'state')} | dict(context) | {
+            'server_now': datetime.now(timezone.utc), 'attempt': attempt}
 
 
 def save_answers(db, attempt, answers):
@@ -190,6 +285,8 @@ def save_answers(db, attempt, answers):
 def finish_attempt(db, user, quiz, attempt, timed_out=False):
     if attempt['state'] != 'in_progress':
         return attempt
+    # Serialize automatic grade writes with staff edits/publication previews.
+    db.execute('SELECT id FROM course_offerings WHERE id=%s FOR UPDATE', (quiz['offering_id'],))
     score = db.execute('''SELECT COALESCE(sum(CASE WHEN o.is_correct THEN q.points ELSE 0 END),0) AS score
         FROM quiz_questions q LEFT JOIN quiz_answers a ON a.quiz_question_id=q.id AND a.attempt_id=%s
         LEFT JOIN quiz_options o ON o.id=a.selected_option_id WHERE q.quiz_id=%s''', (attempt['id'], quiz['id'])).fetchone()['score']
@@ -227,7 +324,15 @@ def trigger_expire(request: Request, user=Depends(principal)):
     if user['role'] not in ('doctor', 'ta'):
         fail(403, 'هذه العملية مخصصة للطاقم فقط.')
     with request.app.state.db.transaction() as db:
-        count = expire_stale_attempts(db, user)
+        offerings = db.execute('SELECT id FROM course_offerings').fetchall()
+        count = 0
+        for offering in offerings:
+            if user['role'] == 'doctor':
+                allowed = db.execute('SELECT 1 FROM course_offerings WHERE id=%s AND doctor_user_id=%s', (offering['id'], user['id'])).fetchone()
+            else:
+                allowed = db.execute('SELECT 1 FROM course_sections WHERE offering_id=%s AND ta_user_id=%s', (offering['id'], user['id'])).fetchone()
+            if allowed:
+                count += advance_quiz_lifecycle(db, offering['id'])
     return {'ok': True, 'finalized': count}
 
 
@@ -260,6 +365,7 @@ class Answers(BaseModel):
 
 @router.patch('/quizzes/{quiz_id}/answers')
 def autosave(quiz_id: int, body: Answers, request: Request, user=Depends(principal)):
+    expired = False
     with request.app.state.db.transaction() as db:
         quiz, own = student_quiz(db, user, quiz_id)
         attempt = db.execute('SELECT * FROM quiz_attempts WHERE quiz_id=%s AND enrollment_id=%s FOR UPDATE', (quiz_id, own['id'])).fetchone()
@@ -267,10 +373,13 @@ def autosave(quiz_id: int, body: Answers, request: Request, user=Depends(princip
         # BUG-03: eagerly finalize if deadline already passed before rejecting.
         if attempt and attempt['state'] == 'in_progress' and now >= attempt['deadline_at']:
             finish_attempt(db, user, quiz, attempt, timed_out=True)
+            expired = True
+        elif not attempt or attempt['state'] != 'in_progress' or now >= attempt['deadline_at']:
             fail(409, 'انتهت المحاولة. لا يمكن تعديل الإجابات.')
-        if not attempt or attempt['state'] != 'in_progress' or now >= attempt['deadline_at']:
-            fail(409, 'انتهت المحاولة. لا يمكن تعديل الإجابات.')
-        save_answers(db, attempt, body.answers)
+        else:
+            save_answers(db, attempt, body.answers)
+    if expired:
+        fail(409, 'انتهت المحاولة. لا يمكن تعديل الإجابات.')
     return {'ok': True}
 
 

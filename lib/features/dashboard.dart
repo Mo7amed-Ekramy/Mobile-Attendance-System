@@ -18,6 +18,7 @@ class HomePage extends StatelessWidget {
     final student = role == Role.student;
     return RemotePage<Map<String, dynamic>>(
         scope: state.scopeKey,
+        refreshInterval: const Duration(seconds: 15),
         load: () async {
           final results = await Future.wait([
             state.api.getCourse(state.course!, 'quizzes',
@@ -26,7 +27,8 @@ class HomePage extends StatelessWidget {
                 sectionId: state.section?.id),
             if (!student)
               state.api.getCourse(state.course!, 'sessions',
-                  sectionId: state.section?.id),
+                  sectionId: state.section?.id,
+                  query: {if (role == Role.ta) 'state': 'draft'}),
           ]);
           return {
             'quizzes': results[0],
@@ -48,41 +50,58 @@ class HomePage extends StatelessWidget {
           }
 
           return PageContent(children: [
-            PageHeading(
-                switch (role) {
-                  Role.doctor => 'لوحة متابعة المقرر',
-                  Role.ta => 'مهام السكشن',
-                  Role.student => 'يومي الدراسي',
+            WelcomePanel(
+                title: switch (role) {
+                  Role.doctor => 'كل تفاصيل مقررك، في مكان واحد',
+                  Role.ta => 'سكشنك جاهز ليوم جديد',
+                  Role.student => 'خطوة جديدة في رحلتك الدراسية',
                 },
-                'مرحباً، ${state.user!.name} · ${state.user!.roleLabel}'),
-            StatusRow('${state.course!.code} · ${state.course!.name}',
-                '${state.section?.label ?? 'جميع السكاشن'} · ${state.course!.term}'),
+                name: state.user!.name,
+                role: state.user!.roleLabel,
+                detail: '${state.course!.code} · ${state.course!.name}\n'
+                    '${role == Role.doctor ? '' : '${state.section?.label ?? 'لا يوجد سكشن'} · '}'
+                    '${state.course!.termLabel}'),
+            if (role == Role.ta && sessions.isNotEmpty)
+              ActionCard(
+                  title: 'استكمال كشف محفوظ',
+                  detail:
+                      '${sessions.first['title']} · ${state.section?.label ?? ''}',
+                  icon: Icons.edit_note,
+                  onTap: () => open(
+                      sessions.first['title'] as String,
+                      SessionDetailPage(
+                          state.api, state.course!, sessions.first['id'] as int,
+                          sectionId: state.section?.id, editable: true))),
             Text('ابدأ من هنا', style: Theme.of(context).textTheme.titleLarge),
-            if (student)
+            ActionGrid(children: [
+              if (student)
+                ActionCard(
+                    title: 'مسح رمز الحضور',
+                    detail: 'سجّل حضور المحاضرة وأظهر إيصال التسجيل',
+                    icon: Icons.qr_code_scanner,
+                    onTap: () => open('تسجيل الحضور', ScanPage(state.api))),
+              if (role == Role.doctor)
+                ActionCard(
+                    title: 'فتح محاضرة',
+                    detail: 'أنشئ جلسة وأظهر رمز الحضور للطلاب',
+                    icon: Icons.add_circle_outline,
+                    onTap: () => open('فتح محاضرة', CreateSessionPage(state))),
+              if (role == Role.ta)
+                ActionCard(
+                    title: 'إنشاء كشف حضور السكشن',
+                    detail: 'حدّد الحالات ثم راجع الكشف واعتمده',
+                    icon: Icons.playlist_add_check,
+                    onTap: () => open('كشف جديد', CreateSessionPage(state))),
               ActionCard(
-                  title: 'مسح رمز الحضور',
-                  detail: 'سجّل حضور المحاضرة وأظهر إيصال التسجيل',
-                  icon: Icons.qr_code_scanner,
-                  onTap: () => open('تسجيل الحضور', ScanPage(state.api))),
-            if (role == Role.doctor)
-              ActionCard(
-                  title: 'فتح محاضرة',
-                  detail: 'أنشئ جلسة وأظهر رمز الحضور للطلاب',
-                  icon: Icons.add_circle_outline,
-                  onTap: () => open('فتح محاضرة', CreateSessionPage(state))),
-            if (role == Role.ta)
-              ActionCard(
-                  title: 'إنشاء كشف حضور السكشن',
-                  detail: 'حدّد الحالات ثم راجع الكشف واعتمده',
-                  icon: Icons.playlist_add_check,
-                  onTap: () => open('كشف جديد', CreateSessionPage(state))),
-            ActionCard(
-                title: student ? 'درجاتي' : 'الدرجات والتقييمات',
-                detail: student
-                    ? 'النتائج المنشورة والبنود التي تنتظر الاكتمال'
-                    : 'رصد الدرجات ومراجعة الحفظ والنشر',
-                icon: Icons.grade_outlined,
-                onTap: () => open('الدرجات', GradesPage(state))),
+                  title: student ? 'درجاتي' : 'الدرجات والتقييمات',
+                  detail: student
+                      ? 'النتائج المنشورة والبنود التي تنتظر الاكتمال'
+                      : role == Role.ta
+                          ? 'رصد أعمال السكشن وحفظها لمراجعة الدكتور'
+                          : 'رصد الدرجات ومراجعة الحفظ والنشر',
+                  icon: Icons.grade_outlined,
+                  onTap: () => open('الدرجات', GradesPage(state))),
+            ]),
             MetricGrid(
                 children: student
                     ? [
@@ -147,13 +166,15 @@ class HomePage extends StatelessWidget {
                   onTap: () => open('الكويزات', QuizzesPage(state))),
             ] else ...[
               for (final session in sessions
-                  .where((s) => s['state'] == 'open' || s['state'] == 'draft')
+                  .where((s) => role == Role.ta
+                      ? s['kind'] == 'section' && s['state'] == 'draft'
+                      : s['state'] == 'open' || s['state'] == 'draft')
                   .take(3))
                 ActionCard(
                     title: session['title'] as String,
-                    detail: session['kind'] == 'lecture'
-                        ? 'محاضرة مفتوحة · متابعة الرمز والإغلاق'
-                        : 'كشف لم يُعتمد · متابعة الحالات',
+                    detail: '${state.course!.code} · '
+                        '${state.course!.sections.where((s) => s.id == session['course_section_id']).firstOrNull?.label ?? 'جميع السكاشن'}\n'
+                        '${session['kind'] == 'lecture' ? role == Role.doctor ? 'محاضرة مفتوحة · متابعة الرمز والإغلاق' : 'محاضرة · عرض فقط' : 'المعيد المسؤول: ${state.course!.sections.where((s) => s.id == session['course_section_id']).firstOrNull?.taName ?? 'غير محدد'} · ${role == Role.doctor ? 'عرض فقط' : 'استكمال الكشف'}'}',
                     icon: Icons.pending_actions_outlined,
                     onTap: () => open(
                         session['title'] as String,
@@ -162,7 +183,15 @@ class HomePage extends StatelessWidget {
                                 state.api, state.course!, session['id'] as int)
                             : SessionDetailPage(
                                 state.api, state.course!, session['id'] as int,
+                                sectionId: state.section?.id,
                                 editable: role == Role.ta))),
+              if (role == Role.ta)
+                ActionCard(
+                    title: 'كل مسودات الحضور',
+                    detail: 'الكشوف غير المعتمدة للسكشن المختار',
+                    icon: Icons.pending_actions_outlined,
+                    onTap: () => open('مسودات الحضور',
+                        AttendancePage(state, initialPendingOnly: true))),
               ActionCard(
                   title: 'بنك الأسئلة وكويزات السكشن',
                   detail: 'الأسئلة والكويزات والمحاولات المسلّمة',
@@ -177,7 +206,7 @@ class HomePage extends StatelessWidget {
                       RosterPage(state.api, state.course!,
                           sectionId: state.section?.id))),
               ActionCard(
-                  title: 'تقرير المقرر',
+                  title: role == Role.ta ? 'تقرير السكشن' : 'تقرير المقرر',
                   detail: 'إحصائيات النطاق المحدد والحضور والتقييمات',
                   icon: Icons.analytics_outlined,
                   onTap: () => open('التقرير', CourseReportPage(state))),

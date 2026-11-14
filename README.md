@@ -15,7 +15,9 @@ For a fresh checkout follow [standalone setup](docs/SETUP.md). For the defense
 use [the exact three-role runbook](docs/DEMO_RUNBOOK.md),
 [current feature status](docs/FEATURE_STATUS.md), and
 [Phase 5 verification](docs/PHASE5_VERIFICATION.md).
-Phase 4 is partial; the [audit](review/phase4-audit.md) records its missing features.
+The [UI/workflow refinement](docs/UI_REFINEMENT.md) adds attendance drafts, quiz
+scheduling/cancellation and PDF reports. The older [Phase 4 audit](review/phase4-audit.md)
+records the pre-refinement state.
 The [UI/UX review](docs/UI_UX_REVIEW.md) covers the newer role dashboards,
 attendance hub, section shortcuts, edit protection and saved preferences.
 

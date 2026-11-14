@@ -4,7 +4,7 @@ import json
 import secrets
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 from psycopg.types.json import Jsonb
 
@@ -41,6 +41,10 @@ def create_session(offering_id: int, body: CreateSession, request: Request, user
             fail(403, 'فتح المحاضرة خاص بدكتور المقرر.')
         if body.kind == 'section' and (body.section_id is None or user['role'] != 'ta'):
             fail(403, 'حضور السكشن يتطلب معيداً مسنداً للسكشن.')
+        if body.kind == 'section' and not db.execute(
+                "SELECT 1 FROM enrollments WHERE course_section_id=%s AND state='active' LIMIT 1",
+                (body.section_id,)).fetchone():
+            fail(422, 'لا يوجد طلاب مسجلون في هذا السكشن لإنشاء كشف حضور.')
         now = datetime.now(timezone.utc)
         row = db.execute('''INSERT INTO attendance_sessions(offering_id,course_section_id,kind,title,starts_at,ends_at,state,created_by)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *''',
@@ -53,11 +57,16 @@ def create_session(offering_id: int, body: CreateSession, request: Request, user
 
 
 @router.get('/courses/{offering_id}/sessions')
-def sessions(offering_id: int, request: Request, section_id: int | None = None, user=Depends(principal)):
+def sessions(offering_id: int, request: Request, section_id: int | None = None,
+             state: Literal['draft', 'open', 'closed', 'finalized'] | None = None,
+             limit: int = Query(100, ge=1, le=100), offset: int = Query(0, ge=0), user=Depends(principal)):
     with request.app.state.db.transaction() as db:
         authorize_offering(db, user, offering_id, section_id)
         params = [offering_id]
         condition = 's.offering_id=%s'
+        if state is not None:
+            condition += ' AND s.state=%s'
+            params.append(state)
         if user['role'] == 'student':
             own = enrollment(db, user, offering_id)
             condition += " AND s.state<>'draft' AND EXISTS(SELECT 1 FROM session_eligibility x WHERE x.session_id=s.id AND x.enrollment_id=%s)"
@@ -67,16 +76,28 @@ def sessions(offering_id: int, request: Request, section_id: int | None = None, 
         else:
             own_condition, own_params = 'false', []
             if user['role'] == 'ta':
-                condition += ' AND s.course_section_id IN (SELECT id FROM course_sections WHERE ta_user_id=%s)'
+                condition += ''' AND EXISTS(SELECT 1 FROM session_eligibility x
+                    JOIN enrollments e ON e.id=x.enrollment_id JOIN course_sections cs ON cs.id=e.course_section_id
+                    WHERE x.session_id=s.id AND cs.ta_user_id=%s)'''
                 params.append(user['id'])
         if section_id is not None:
             condition += ' AND (s.course_section_id=%s OR s.course_section_id IS NULL)'
             params.append(section_id)
+        count_filter, count_params = '', []
+        if user['role'] == 'ta':
+            count_filter += ' AND e.course_section_id IN (SELECT id FROM course_sections WHERE ta_user_id=%s)'
+            count_params.append(user['id'])
+        if section_id is not None:
+            count_filter += ' AND e.course_section_id=%s'
+            count_params.append(section_id)
         return db.execute('''SELECT s.*,
-            (SELECT count(*) FROM session_eligibility x WHERE x.session_id=s.id) AS eligible_count,
-            (SELECT count(*) FROM attendance_records r WHERE r.session_id=s.id AND r.status='present') AS present_count,
+            (SELECT count(*) FROM session_eligibility x JOIN enrollments e ON e.id=x.enrollment_id
+                WHERE x.session_id=s.id''' + count_filter + ''') AS eligible_count,
+            (SELECT count(*) FROM attendance_records r JOIN enrollments e ON e.id=r.enrollment_id
+                WHERE r.session_id=s.id AND r.status='present' ''' + count_filter + ''') AS present_count,
             (SELECT r.status FROM attendance_records r WHERE r.session_id=s.id AND ''' + own_condition + ''') AS own_status
-            FROM attendance_sessions s WHERE ''' + condition + ' ORDER BY s.starts_at DESC,s.id DESC LIMIT 100', own_params + params).fetchall()
+            FROM attendance_sessions s WHERE ''' + condition + ' ORDER BY s.starts_at DESC,s.id DESC LIMIT %s OFFSET %s',
+            count_params + count_params + own_params + params + [limit, offset]).fetchall()
 
 
 @router.get('/courses/{offering_id}/sessions/summary')
@@ -109,15 +130,21 @@ def sessions_summary(offering_id: int, request: Request, section_id: int | None 
 
 
 @router.get('/courses/{offering_id}/sessions/{session_id}')
-def session_detail(offering_id: int, session_id: int, request: Request, user=Depends(principal)):
+def session_detail(offering_id: int, session_id: int, request: Request,
+                   section_id: int | None = None, user=Depends(principal)):
     with request.app.state.db.transaction() as db:
         row = session_scope(db, user, offering_id, session_id)
+        if section_id is not None:
+            authorize_offering(db, user, offering_id, section_id)
+            if row['course_section_id'] is not None and row['course_section_id'] != section_id:
+                fail(403, 'هذه الجلسة تخص سكشناً مختلفاً.')
         # BUG-11: draft sessions are invisible in the listing; block detail too.
         if user['role'] == 'student' and row['state'] == 'draft':
             fail(403, 'الجلسة في مرحلة المسودة ولا يمكن عرضها حالياً.')
         if user['role'] == 'student':
             own = enrollment(db, user, offering_id)
-            row['record'] = db.execute('SELECT status,recorded_at FROM attendance_records WHERE session_id=%s AND enrollment_id=%s', (session_id, own['id'])).fetchone()
+            row['record'] = db.execute('SELECT id AS receipt_id,status,recorded_at FROM attendance_records WHERE session_id=%s AND enrollment_id=%s', (session_id, own['id'])).fetchone()
+            row.update(receipt_context(db, row))
         else:
             ta_filter = ''
             params = [session_id]
@@ -126,9 +153,15 @@ def session_detail(offering_id: int, session_id: int, request: Request, user=Dep
                     SELECT id FROM course_sections WHERE offering_id=%s AND ta_user_id=%s
                 )'''
                 params.extend([offering_id, user['id']])
-            row['rows'] = db.execute('''SELECT e.id AS enrollment_id,u.full_name,s.university_id,r.status
+            if section_id is not None:
+                ta_filter += ' AND e.course_section_id=%s'
+                params.append(section_id)
+            row['rows'] = db.execute('''SELECT e.id AS enrollment_id,u.full_name,s.university_id,
+                CASE WHEN a.state='draft' THEN m.status ELSE r.status END AS status
                 FROM session_eligibility x JOIN enrollments e ON e.id=x.enrollment_id JOIN students s ON s.id=e.student_id
+                JOIN attendance_sessions a ON a.id=x.session_id
                 JOIN app_users u ON u.id=s.user_id LEFT JOIN attendance_records r ON r.session_id=x.session_id AND r.enrollment_id=e.id
+                LEFT JOIN attendance_draft_marks m ON m.session_id=x.session_id AND m.enrollment_id=e.id
                 WHERE x.session_id=%s''' + ta_filter + ''' ORDER BY u.full_name,e.id''', tuple(params)).fetchall()
         return row
 
@@ -150,6 +183,13 @@ def session_qr(offering_id: int, session_id: int, request: Request, user=Depends
 
 class CheckIn(BaseModel):
     payload: str = Field(min_length=10, max_length=300)
+
+
+def receipt_context(db, session):
+    course = db.execute('''SELECT c.code AS course_code,c.name AS course_name
+        FROM course_offerings o JOIN courses c ON c.id=o.course_id WHERE o.id=%s''',
+        (session['offering_id'],)).fetchone()
+    return dict(course) | {'session_title': session['title']}
 
 
 @router.post('/attendance/check-ins')
@@ -189,7 +229,7 @@ def check_in(body: CheckIn, request: Request, user=Depends(principal)):
             record = db.execute("INSERT INTO attendance_records(session_id,enrollment_id,offering_id,status,source) VALUES (%s,%s,%s,'present','qr') RETURNING id,status,recorded_at",
                 (row['id'], own['id'], row['offering_id'])).fetchone()
             audit(db, user, row['offering_id'], 'attendance.check-in', 'record', record['id'], after=record)
-        response = {'receipt_id': record['id'], 'session_id': row['id'], 'offering_id': row['offering_id'], 'status': record['status'], 'recorded_at': record['recorded_at'].isoformat(), 'duplicate': duplicate}
+        response = {'receipt_id': record['id'], 'session_id': row['id'], 'offering_id': row['offering_id'], 'status': record['status'], 'recorded_at': record['recorded_at'].isoformat(), 'duplicate': duplicate} | receipt_context(db, row)
         if key:
             db.execute("INSERT INTO api_requests(user_id,operation,request_key,request_hash,response) VALUES (%s,'check-in',%s,%s,%s)", (user['id'], key, digest, Jsonb(response)))
         return response
@@ -198,6 +238,34 @@ def check_in(body: CheckIn, request: Request, user=Depends(principal)):
 class RollRow(BaseModel):
     enrollment_id: int = Field(gt=0)
     status: Literal['present', 'absent', 'excused']
+
+
+class SaveRollDraft(BaseModel):
+    revision: int = Field(gt=0)
+    rows: list[RollRow] = Field(max_length=1000)
+
+
+@router.put('/courses/{offering_id}/sessions/{session_id}/draft')
+def save_roll_draft(offering_id: int, session_id: int, body: SaveRollDraft, request: Request, user=Depends(principal)):
+    with request.app.state.db.transaction() as db:
+        row = session_scope(db, user, offering_id, session_id, write=True)
+        if user['role'] != 'ta' or row['kind'] != 'section':
+            fail(403, 'حفظ كشف السكشن خاص بالمعيد المسند إليه.')
+        if row['state'] != 'draft' or row['revision'] != body.revision:
+            fail(409, 'تغير كشف الحضور. حدّث الصفحة قبل الحفظ.')
+        ids = {x['enrollment_id'] for x in db.execute(
+            'SELECT enrollment_id FROM session_eligibility WHERE session_id=%s', (session_id,))}
+        selected = {x.enrollment_id for x in body.rows}
+        if len(selected) != len(body.rows) or not selected <= ids:
+            fail(422, 'يجب حفظ طلاب هذا السكشن فقط دون تكرار.')
+        db.execute('DELETE FROM attendance_draft_marks WHERE session_id=%s', (session_id,))
+        for mark in body.rows:
+            db.execute('''INSERT INTO attendance_draft_marks(session_id,enrollment_id,offering_id,status)
+                VALUES (%s,%s,%s,%s)''', (session_id, mark.enrollment_id, offering_id, mark.status))
+        revision = db.execute('UPDATE attendance_sessions SET revision=revision+1 WHERE id=%s RETURNING revision',
+                              (session_id,)).fetchone()['revision']
+        audit(db, user, offering_id, 'attendance.save_draft', 'session', session_id, after=body.model_dump())
+        return {'ok': True, 'count': len(body.rows), 'revision': revision}
 
 
 class FinalizeRoll(BaseModel):
@@ -218,6 +286,7 @@ def finalize_roll(offering_id: int, session_id: int, body: FinalizeRoll, request
             fail(422, 'يجب تحديد حالة جميع الطلاب المسجلين دون إضافة طلاب من سكشن آخر.')
         for mark in body.rows:
             db.execute("INSERT INTO attendance_records(session_id,enrollment_id,offering_id,status,source) VALUES (%s,%s,%s,%s,'manual')", (session_id, mark.enrollment_id, offering_id, mark.status))
+        db.execute('DELETE FROM attendance_draft_marks WHERE session_id=%s', (session_id,))
         db.execute("UPDATE attendance_sessions SET state='finalized',revision=revision+1 WHERE id=%s", (session_id,))
         audit(db, user, offering_id, 'attendance.finalize', 'session', session_id, after=body.model_dump())
         return {'ok': True, 'count': len(ids)}

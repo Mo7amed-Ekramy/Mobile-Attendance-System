@@ -514,7 +514,7 @@ class DoctorChecks:
                 button('Doctor role quiz').click()
                 return wait_text('الدرجة العظمى')
             C('UI Quiz results', 'Submitted quiz opens the staff gradebook', quiz_results)
-            C('UI Assignments', 'Teaching-assignment view loads real sections/TAs', lambda: readonly_page('التكليفات التدريسية', 'سكشن'))
+            C('UI Assignments', 'Course assistants are grouped with their assigned sections', lambda: readonly_page('معيدو المقرر', 'عدد السكاشن:'))
             C('UI Reports', 'Report view loads student/session counts', lambda: readonly_page('تقرير المقرر', 'عدد الطلاب'))
             C('UI Notifications', 'Own empty inbox displays its empty state', lambda: readonly_page('الإشعارات', 'لا توجد إشعارات'))
             def dark_mode():

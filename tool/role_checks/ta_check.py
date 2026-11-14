@@ -190,6 +190,7 @@ def run_api(s):
         call('GET', '/courses/1/quizzes')[0]['submitted_count'] == 1 and
         any(row['enrollment_id'] == own and row['state'] == 'recorded' for row in
             call('GET', f"/courses/1/assessments/{quiz['assessment_id']}/results")['rows']), 'Submitted result missing'))
+    call('POST', f"/courses/1/quizzes/{quiz['id']}/close")
     s.call('POST', f"/courses/1/assessments/{quiz['assessment_id']}/publish", role='doctor')
     check('Quizzes: doctor publishes TA quiz and student sees score', 'API', lambda: verify(
         s.call('POST', f"/quizzes/{quiz['id']}/start", role='student')['score'] is not None, 'Published score hidden'))
@@ -305,7 +306,7 @@ def run_browser(s, fixture):
         check('Browser question bank: create four-option question', 'Chrome UI', lambda: browser_questions(s, page))
         check('Browser quiz creator: target section and random questions', 'Chrome UI', lambda: browser_quiz(s, page))
         check('Browser notifications: view and mark owned notification read', 'Chrome UI', lambda: browser_notifications(s, page))
-        check('Browser assignments: only assigned sections visible', 'Chrome UI', lambda: browser_assignments(s, page))
+        check('Browser settings: doctor-only assistants directory is hidden', 'Chrome UI', lambda: browser_assignments(s, page))
         check('Browser report: TA student/session/finalized counts visible', 'Chrome UI', lambda: browser_report(s, page))
         check('Browser settings: theme toggles', 'Chrome UI', lambda: browser_theme(s, page))
         check('Browser session: expiry returns to login', 'Chrome UI', lambda: browser_expiry(s, page, fixture['user']['id']))
@@ -526,14 +527,13 @@ def browser_notifications(s, page):
 def browser_assignments(s, page):
     browser_home(s, page)
     button(page, 'المزيد').click()
-    button(page, 'التكليفات التدريسية').click()
-    text(page, 'التكليفات').wait_for()
+    verify(button(page, 'معيدو المقرر').count() == 0, 'Doctor-only directory was shown to TA')
 
 
 def browser_report(s, page):
     browser_home(s, page)
     button(page, 'المزيد').click()
-    button(page, 'تقرير المقرر').click()
+    button(page, 'تقرير السكشن').click()
     text(page, 'عدد الطلاب').wait_for()
     text(page, 'جلسات الحضور').wait_for()
     text(page, 'الجلسات المعتمدة').wait_for()

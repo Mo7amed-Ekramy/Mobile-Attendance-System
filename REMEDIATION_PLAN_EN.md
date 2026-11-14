@@ -120,3 +120,9 @@ Native/manual coverage and fully offline cold startup remain open gates.
     - `flutter test` (100% passing tests).
     - `.\server\.venv\Scripts\python.exe -m unittest discover -s server -p 'test_*.py' -v` (run from project root).
     - `flutter analyze` (Zero errors, zero warnings).
+
+
+2026-11-06 follow-up: attendance draft persistence, quiz scheduling/preparation/
+cancellation, independent attempt expiry and PDF student reports are implemented.
+Current validation and remaining manual/deferred scope are recorded in
+[UI_REFINEMENT.md](docs/UI_REFINEMENT.md).

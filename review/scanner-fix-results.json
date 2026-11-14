@@ -1,0 +1,26 @@
+{
+  "checks": [
+    {
+      "check": "Leaving without scanning ends actual owned video tracks and preserves unrelated tracks",
+      "passed": true
+    },
+    {
+      "check": "desktop: compact manual entry submits, retains failed input, and camera ends on back",
+      "passed": true
+    },
+    {
+      "check": "mobile: compact manual entry submits, retains failed input, and camera ends on back",
+      "passed": true
+    },
+    {
+      "check": "Permission granted after route exit cannot leave a live camera stream",
+      "passed": true
+    },
+    {
+      "check": "Scanner can reopen normally after cancelling a pending camera permission request",
+      "passed": true
+    }
+  ],
+  "isolated_database_cleaned": true,
+  "camera": "Real browser MediaStream tracks from simulated video; physical device not used"
+}

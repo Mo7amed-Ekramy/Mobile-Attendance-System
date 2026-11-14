@@ -20,7 +20,7 @@ first, then apply API migrations and provision authentication:
 ~~~
 
 Setup reads administrator credentials from ignored database/.env. It applies
-migrations 004 and 005, initializes only missing account password hashes, creates
+migrations 004, 005 and 006, initializes only missing account password hashes, creates
 the restricted university_attendance_api login, and writes generated connection
 credentials to ignored server/.env. Re-running setup preserves existing hashes
 and does not seed operational records.
@@ -84,6 +84,13 @@ Student responses exclude answer keys. Deadlines and scores are server-controlle
 Results appear after instructor publication. Notifications are in-app;
 external push/email delivery is not configured.
 
+The priority update adds student `GET /quizzes/{id}/readiness` (no attempt creation)
+and doctor `GET /courses/{id}/assessments/{assessment_id}/publication-preview`.
+The current UI sends the preview fingerprint when publishing; stale previews
+return 409. Existing publish requests without a body remain compatible. Student
+session details now include the student's own receipt ID and actual course context.
+See [priority changes and QR verification](../docs/PRIORITY_WORKFLOW_UPDATE.md).
+
 ## Tests
 
 ~~~powershell
@@ -91,7 +98,7 @@ external push/email delivery is not configured.
 dart run tool/verify_api.dart
 ~~~
 
-The eleven integration journeys create a unique attendance_api_test_* database,
+The nineteen integration journeys create a unique attendance_api_test_* database,
 apply seed/migrations there, and drop that exact database afterward. They require
 administrator settings and the provisioned API role. They never truncate or add
 workflow fixtures to university_attendance.
@@ -110,3 +117,11 @@ The seed has no historical workflows or academic year/dates; the imported term
 remains legacy-semester-2. The SQL Server backup has not been restored/imported.
 Account administration, password recovery, external push, deployment/HTTPS, and
 physical-device camera/network verification remain beyond the local demo.
+
+
+The 2026-11-06 workflow update adds partial attendance drafts (revision-checked
+PUT `/courses/{id}/sessions/{session_id}/draft`), paginated session history,
+prepared/scheduled quizzes, launch/cancel controls and complete per-student
+reports at `/courses/{id}/report/students`. The API lifespan runs an automatic
+quiz maintenance sweep every 10 seconds. Reapply setup and restart a running API
+to load the migration and updated code. See [refinement notes](../docs/UI_REFINEMENT.md).

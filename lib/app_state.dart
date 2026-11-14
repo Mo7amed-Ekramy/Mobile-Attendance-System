@@ -68,8 +68,12 @@ class AppState extends ChangeNotifier {
     course = courses.where((item) => item.id == previous).firstOrNull ??
         courses.firstOrNull;
     final selected = section?.id ?? _rememberedSection;
-    section = course?.sections.where((item) => item.id == selected).firstOrNull;
-    if (user?.role != Role.doctor) section ??= course?.sections.firstOrNull;
+    // Doctors always work across the course, including when an older saved
+    // preference still contains a section selected through the previous picker.
+    section = user?.role == Role.doctor
+        ? null
+        : course?.sections.where((item) => item.id == selected).firstOrNull ??
+            course?.sections.firstOrNull;
     _rememberedCourse = null;
     _rememberedSection = null;
     _savePreferences();
@@ -78,15 +82,26 @@ class AppState extends ChangeNotifier {
   }
 
   void selectCourse(CourseOffering selected) {
+    selectScope(selected);
+  }
+
+  /// Publish a course and its section together, so the current page only reloads
+  /// once and never requests data for a temporary, mismatched selection.
+  void selectScope(CourseOffering selected, {CourseSection? selectedSection}) {
     course = selected;
-    section = user?.role == Role.doctor ? null : selected.sections.firstOrNull;
+    section = user?.role == Role.doctor
+        ? null
+        : selected.sections
+                .where((item) => item.id == selectedSection?.id)
+                .firstOrNull ??
+            selected.sections.firstOrNull;
     _savePreferences();
     refreshRevision++;
     notifyListeners();
   }
 
   void selectSection(CourseSection? selected) {
-    section = selected;
+    section = user?.role == Role.doctor ? null : selected;
     _savePreferences();
     refreshRevision++;
     notifyListeners();

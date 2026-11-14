@@ -1,0 +1,33 @@
+{
+  "checks": [
+    {
+      "check": "doctor responsive login and scope",
+      "passed": true
+    },
+    {
+      "check": "ta responsive login and scope",
+      "passed": true
+    },
+    {
+      "check": "attendance draft survives browser reload",
+      "passed": true
+    },
+    {
+      "check": "quiz preparation and cancellation through UI",
+      "passed": true
+    },
+    {
+      "check": "scoped Arabic PDF download",
+      "passed": true
+    },
+    {
+      "check": "student responsive login and scope",
+      "passed": true
+    },
+    {
+      "check": "student dark theme",
+      "passed": true
+    }
+  ],
+  "isolated_database_cleaned": true
+}

@@ -289,6 +289,7 @@ void main() {
           return http.Response(
               jsonEncode({
                 'title': 'Section',
+                'starts_at': '2026-11-06T10:00:00Z',
                 'state': submitted == null ? 'draft' : 'finalized',
                 'revision': 1,
                 'rows': [
@@ -322,6 +323,10 @@ void main() {
     await tester.tap(find.text('مراجعة واعتماد الكشف'));
     // AsyncButton remains busy while the confirmation dialog is open.
     await tester.pump(const Duration(milliseconds: 300));
+    expect(find.textContaining('جميع طلاب الكشف: 2'), findsOneWidget);
+    expect(find.textContaining('حاضر: 1 · غائب: 0 · بعذر: 1'), findsOneWidget);
+    expect(find.textContaining('تصحيح الحضور بعد الاعتماد غير متاح'),
+        findsOneWidget);
     await tester.tap(find.text('تأكيد'));
     await tester.pumpAndSettle();
     expect(submitted!['rows'], [
